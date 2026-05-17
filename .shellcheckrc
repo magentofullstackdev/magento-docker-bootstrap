@@ -1,0 +1,36 @@
+# shellcheck configuration for this repo.
+#
+# Each disabled rule below documents a deliberate pattern. New scripts in
+# this repo still get full strict checking — only the listed codes are
+# globally relaxed.
+
+# SC2034: variable appears unused.
+# We pass associative arrays (MAGENTO_VERSIONS, MAGEOS_VERSIONS) to helper
+# functions via `declare -n` namerefs (e.g. `declare -n VER_MAP=...`,
+# `local -n out_ref=$2`). ShellCheck cannot follow nameref usage, so it
+# flags these arrays and the local nameref aliases as unused.
+disable=SC2034
+
+# SC1090: cannot follow non-constant source.
+# `init.sh` and `render-compose.sh` source a user-provided env file
+# (`$CONFIG_FILE`, `$ENV_FILE`) whose path is only known at runtime. The
+# `# shellcheck source=...` directive doesn't apply because there is no
+# fixed target — that's the whole point of the indirection.
+disable=SC1090
+
+# SC2206: quote to prevent word-splitting.
+# In `parse_kv`, we intentionally split `$input` on `|` after setting a
+# local IFS. The unquoted expansion is the documented bash idiom for this.
+disable=SC2206
+
+# SC2059: variable inside printf format string.
+# Used in interactive prompts where the format string carries a computed
+# upper bound (`[1-${#opts[@]}]`). The value is from a controlled local
+# array — there's no untrusted input risk.
+disable=SC2059
+
+# SC2016: single-quoted expression won't expand.
+# `envsubst '${SITE_HOST} ${SITE_NAME}'` deliberately single-quotes the
+# variable list — envsubst needs the literal `${...}` tokens to know
+# which placeholders to substitute. Double quotes would defeat the call.
+disable=SC2016

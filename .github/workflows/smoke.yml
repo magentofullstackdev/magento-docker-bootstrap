@@ -1,0 +1,55 @@
+name: smoke-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Allow manual runs from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  fast:
+    name: Fast smoke (configure + render + validate YAML)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pyyaml
+        run: pip install --user pyyaml
+
+      - name: Run fast smoke test
+        run: bash tests/smoke.sh
+
+  shell-lint:
+    name: Shell lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run shellcheck
+        run: |
+          shellcheck dockerimages/bin/init.sh \
+                     dockerimages/bin/render-compose.sh \
+                     dockerimages/config/php-fpm/bin/install.sh \
+                     dockerimages/config/php-fpm/bin/user-sudoers \
+                     dockerimages/config/nginx/entrypoint.sh \
+                     tests/smoke.sh \
+                     || (echo "shellcheck reported issues — see above"; exit 1)
+
+  # Full mode runs only on main pushes (not PRs from forks) because it
+  # actually pulls images and brings the stack up — slower and resource-heavy.
+  full:
+    name: Full smoke (build + up + curl)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [fast]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pyyaml
+        run: pip install --user pyyaml
+
+      - name: Run full smoke test
+        run: bash tests/smoke.sh --full
+        timeout-minutes: 25
