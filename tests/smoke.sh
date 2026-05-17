@@ -120,7 +120,14 @@ print('services:', sorted(d['services'].keys()))
 
     info "full mode — bringing stack up (this takes a few minutes the first time)"
 
-    # 6. up
+    # 6. external volume prerequisite — compose.yaml declares
+    # `magento-composer-cache` as external so it can be shared across
+    # projects. On a fresh CI runner the volume doesn't exist yet, which
+    # makes `docker compose up` fail with "external volume not found".
+    # `docker volume create` is idempotent.
+    docker volume create magento-composer-cache > /dev/null 2>&1 || true
+
+    # 7. up
     if ! docker compose up -d --build > /tmp/smoke-up.log 2>&1; then
         fail "$fixture_name (docker compose up failed)"
         tail -30 /tmp/smoke-up.log | sed 's/^/    /'

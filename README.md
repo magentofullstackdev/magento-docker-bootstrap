@@ -1,5 +1,7 @@
 # Magento / MageOS Docker Bootstrap
 
+[![smoke](https://github.com/magentofullstackdev/magento-docker-bootstrap/actions/workflows/smoke.yml/badge.svg)](https://github.com/magentofullstackdev/magento-docker-bootstrap/actions/workflows/smoke.yml)
+
 > A configurable, batteries-included Docker dev environment for Magento 2 (Open Source / Adobe Commerce / Cloud) and MageOS — built around the daily ergonomics of a working Magento developer.
 
 ## Why this exists
@@ -48,7 +50,7 @@ The stack is designed so the things you do ten times a day take one keystroke an
 ## The 5-minute setup
 
 ```bash
-git clone https://github.com/<your-fork>/magento-docker-bootstrap myproject
+git clone https://github.com/magentofullstackdev/magento-docker-bootstrap.git myproject
 cd myproject
 make configure      # interactive — answer the questions
 make init           # build with --no-cache and start (first run)
