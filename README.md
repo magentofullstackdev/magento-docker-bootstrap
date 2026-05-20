@@ -52,10 +52,17 @@ The stack is designed so the things you do ten times a day take one keystroke an
 ```bash
 git clone https://github.com/magentofullstackdev/magento-docker-bootstrap.git myproject
 cd myproject
-make configure      # interactive — answer the questions
+make configure      # pick Quick (preset) or Custom (8 questions)
 make init           # build with --no-cache and start (first run)
 make sethostip      # write the container IP into /etc/hosts (sudo)
 ```
+
+`make configure` opens with a two-choice menu:
+
+- **Quick** — pick one of the curated stack presets (`make presets` to see the list) and the wizard asks only for a project name + whether you want Node.js. From inside the preset menu you can still bail out to the full wizard by picking *Custom*, so you never have to abort and restart.
+- **Custom** — the original eight-question flow if no preset matches your target stack.
+
+Want to skip the menu entirely? `make configure PRESET=magento-latest` jumps straight into the preset path, and `make configure PRESET=magento-latest PROJECT_NAME=myshop` skips every prompt.
 
 Open `https://<your-domain>` and accept the self-signed cert.
 
@@ -83,8 +90,10 @@ Run `make help` to see the same list grouped and coloured.
 
 | Command | What it does |
 |---|---|
-| `make configure` | Interactive bootstrap — writes `.env` and renders `compose.yaml`. |
-| `make configure FILE=path/to/answers.env` | Non-interactive — reads all answers from a file. Useful for CI / scripted setups. See [tests/fixtures/](tests/fixtures/) for examples. |
+| `make configure` | Interactive bootstrap — opens with a Quick / Custom menu, then writes `.env` and renders `compose.yaml`. |
+| `make configure PRESET=<name>` | Skip the menu — load a shipped preset and ask only project name + Node. Optionally also `PROJECT_NAME=…`, `DOMAIN=…`, `USE_NODE=yes\|no` to make it fully non-interactive. |
+| `make configure FILE=path/to/answers.env` | Fully non-interactive — reads every answer from a file. CI/scripted setups. See [tests/fixtures/](tests/fixtures/) for examples. |
+| `make presets` | List the stack presets shipped under `dockerimages/templates/`. |
 | `make rebuild-config` | Re-render `compose.yaml` from current `.env` without re-asking questions. |
 | `make check` | Verify `.env` and `compose.yaml` exist. |
 | `make ensure-volumes` | Create the external `magento-composer-cache` volume (idempotent). Auto-called by `init` / `up` / `start` / `rebuild`. |
@@ -216,18 +225,43 @@ Toggling unloads the `zend_extension` itself (not just `xdebug.mode=off`), so th
 
 ## How `make configure` works
 
-The initializer asks for:
+The initializer opens with a two-option menu:
 
-1. Project name (used as the Docker network, volume prefix, container prefix).
-2. Local domain (e.g. `myproject.local`).
-3. Platform: Magento 2 (Open Source / Adobe Commerce) vs MageOS.
-4. Version (sorted newest-first).
-5. PHP version (only the versions compatible with the chosen Magento release).
-6. Database engine and version.
-7. Whether to enable Varnish.
-8. Whether to enable Node.js.
+- **Quick** — pick a curated stack preset (`make presets` lists them) and the wizard asks only for a project name + whether to enable Node.js. SITE_HOST is derived as `<project>.local`. From inside the preset menu, picking *Custom* falls through into the full wizard, so a misclicked Quick path never forces you to abort.
+- **Custom** — the original eight-question wizard:
+  1. Project name (used as the Docker network, volume prefix, container prefix).
+  2. Local domain (e.g. `myproject.local`).
+  3. Platform: Magento 2 (Open Source / Adobe Commerce) vs MageOS.
+  4. Version (sorted newest-first).
+  5. PHP version (only the versions compatible with the chosen Magento release).
+  6. Database engine and version.
+  7. Whether to enable Varnish.
+  8. Whether to enable Node.js.
 
-It writes `.env` and renders `compose.yaml` from a fragment template. To regenerate `compose.yaml` after editing `.env` by hand, run `make rebuild-config` (no questions). To start over, `make clean-all`.
+Both paths write `.env` and render `compose.yaml` through the same code path — the preset path simply composes a synthetic config file on the fly so it goes through the same compatibility-matrix validation as the `FILE=` flow.
+
+### Bypassing the menu
+
+| You want | Run |
+|---|---|
+| Quick path, ask only project name + Node | `make configure PRESET=magento-latest` |
+| Quick path, no prompts at all | `make configure PRESET=magento-latest PROJECT_NAME=myshop USE_NODE=no` |
+| Override the derived domain too | `make configure PRESET=magento-latest PROJECT_NAME=myshop DOMAIN=staging.local` |
+| Replay the same stack across CI / projects | `make configure FILE=path/to/answers.env` (full env, like the fixtures in `tests/fixtures/`) |
+
+### Shipped presets
+
+Run `make presets` for the live list. Currently:
+
+| Preset | Stack |
+|---|---|
+| `magento-latest` | Magento 2.4.9 + PHP 8.4 + MariaDB 11.4 + OpenSearch 3.0 + Varnish |
+| `magento-legacy` | Magento 2.4.6 + PHP 8.2 + MariaDB 10.6 + OpenSearch 2.5 + Varnish |
+| `mageos-latest`  | MageOS 2.3.0 + PHP 8.4 + MariaDB 11.4 + OpenSearch 3.0 + Varnish |
+
+Presets live in `dockerimages/templates/*.env` and ship without `PROJECT_NAME`, `SITE_HOST` or `USE_NODE` — those are per-project and come from the wizard (or env vars). Each one is exercised by `make test` against the compatibility matrix, so a matrix change without a corresponding preset bump fails CI.
+
+To regenerate `compose.yaml` after editing `.env` by hand, run `make rebuild-config` (no questions). To start over, `make clean-all`.
 
 ## Repository layout
 
@@ -240,8 +274,12 @@ It writes `.env` and renders `compose.yaml` from a fragment template. To regener
 ├── db_dumps/                    # drop your DB dumps here
 └── dockerimages/
     ├── bin/
-    │   ├── init.sh              # interactive bootstrap
+    │   ├── init.sh              # interactive bootstrap (Quick / Custom + PRESET=)
     │   └── render-compose.sh    # idempotent compose renderer
+    ├── templates/               # stack presets surfaced by `make presets`
+    │   ├── magento-latest.env
+    │   ├── magento-legacy.env
+    │   └── mageos-latest.env
     └── config/
         ├── database/            # MariaDB / MySQL tuning
         ├── nginx/               # nginx + 2 vhost templates (direct / varnish)

@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-05-20
+
+### Added
+
+- Curated stack presets under `dockerimages/templates/`. Each preset is a
+  stack-only `.env` fragment (no `PROJECT_NAME` / `SITE_HOST` / `USE_NODE` —
+  those stay per-project) with a leading `# Description:` line that the
+  wizard surfaces in the menu. Three presets ship:
+  - `magento-latest` — Magento 2.4.9 + PHP 8.4 + MariaDB 11.4 +
+    OpenSearch 3.0 + Varnish.
+  - `magento-legacy` — Magento 2.4.6 + PHP 8.2 + MariaDB 10.6 +
+    OpenSearch 2.5 + Varnish.
+  - `mageos-latest`  — MageOS 2.3.0 + PHP 8.4 + MariaDB 11.4 +
+    OpenSearch 3.0 + Varnish.
+- `make configure` now opens with a **Quick / Custom** menu. *Quick* shows
+  the preset list and asks only for project name + Node; picking *Custom*
+  from inside the preset menu falls through into the original
+  eight-question wizard, so a misclick never forces an abort. *Custom* from
+  the top-level menu goes straight into the full wizard. Both paths
+  converge on the existing CONFIG_FILE validation block by composing a
+  synthetic config file on the fly — the compatibility-matrix validation
+  stays single-sourced.
+- `PRESET=<name>` bypass for `make configure`: skips the menu and loads a
+  preset directly. With `PROJECT_NAME=…`, `DOMAIN=…` and `USE_NODE=yes|no`
+  also supplied, the entire setup runs zero-prompt — suitable for scripted
+  onboarding and CI. Bad preset names fail fast with the preset list
+  printed to stderr.
+- `make presets` target (and `init.sh --list-presets` for direct invocation)
+  prints the shipped presets with their `# Description:` lines. The
+  `--list-presets` entry point short-circuits before banner / OS detection
+  so it has no side effects.
+- `tests/smoke.sh` exercises every preset under
+  `dockerimages/templates/*.env` via the `PRESET=` entry point on top of
+  the existing fixtures. Catches matrix drift: a matrix change in
+  `init.sh` that invalidates a shipped preset (or vice versa) now fails
+  CI on the fast job.
+- `docs/INSTALL.md`, `README.md` and `CLAUDE.md` updated with the three
+  setup paths (Quick wizard, `PRESET=` bypass, `FILE=` config), the
+  shipped-presets table and the `dockerimages/templates/` row in the
+  "files that matter" reference.
+
+### Changed
+
+- `make configure` help text now documents `PRESET=`, `PROJECT_NAME=`,
+  `DOMAIN=`, `USE_NODE=` and `FILE=` as alternative non-interactive
+  entry points.
+
+### Fixed
+
+- CI: `tests/smoke.sh --full` now pre-creates the shared
+  `magento-composer-cache` external Docker volume before each fixture so
+  the full job no longer races against `make ensure-volumes` on a clean
+  runner.
+- Removed unused `TEMPLATES` variable from `dockerimages/bin/render-compose.sh`
+  (left over from the renderer's earlier templated-fragment iteration; the
+  current renderer reads templates inline).
+
 ## [1.0.0] — 2026-05-17
 
 First public release.

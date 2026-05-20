@@ -48,13 +48,22 @@ help:  ## Show this help
 	@echo ""
 
 ##@ Setup (run these once after cloning)
-.PHONY: configure rebuild-config check
-configure:  ## Configure the stack. Interactive by default, or pass FILE=path/to/answers.env for non-interactive
-	@if [[ -n "$(FILE)" ]]; then \
+.PHONY: configure presets rebuild-config check
+configure:  ## Configure the stack. Interactive (Quick/Custom), or PRESET=name [PROJECT_NAME=x DOMAIN=x.local USE_NODE=yes] / FILE=path for non-interactive
+	@if [[ -n "$(PRESET)" ]]; then \
+	    PRESET="$(PRESET)" \
+	    PROJECT_NAME="$(PROJECT_NAME)" \
+	    SITE_HOST="$(DOMAIN)" \
+	    USE_NODE="$(USE_NODE)" \
+	    bash dockerimages/bin/init.sh; \
+	elif [[ -n "$(FILE)" ]]; then \
 	    CONFIG_FILE="$(FILE)" bash dockerimages/bin/init.sh; \
 	else \
 	    bash dockerimages/bin/init.sh; \
 	fi
+
+presets:  ## List the stack presets shipped under dockerimages/templates/
+	@bash dockerimages/bin/init.sh --list-presets
 
 rebuild-config:  ## Re-render compose.yaml from current .env (no questions asked)
 	@bash dockerimages/bin/render-compose.sh

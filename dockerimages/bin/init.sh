@@ -221,6 +221,33 @@ ask_yn() {
     done
 }
 
+# ---------- preset helpers ----------------------------------------------
+# Presets are stack-only .env fragments shipped under dockerimages/templates.
+# Each carries a leading `# Description: …` line that the wizard renders in
+# the menu. PROJECT_NAME / SITE_HOST / USE_NODE are NEVER baked into a
+# preset — they're per-project and collected from the wizard (or from env
+# vars supplied on the command line).
+list_presets() {
+    local f n d
+    if ! compgen -G "${TEMPLATES_DIR}/*.env" > /dev/null; then
+        printf "(no presets found in %s)\n" "$TEMPLATES_DIR"
+        return
+    fi
+    printf "${C_BOLD}Available presets:${C_RESET}\n"
+    for f in "${TEMPLATES_DIR}"/*.env; do
+        n="$(basename "$f" .env)"
+        d="$(grep -m1 '^# Description:' "$f" | sed 's/^# Description: *//')"
+        printf "  ${C_GREEN}%-20s${C_RESET} %s\n" "$n" "$d"
+    done
+}
+
+# Early bail-out for `make presets`: prints the list and exits. No banner,
+# no OS detection, no side effects — just the list.
+if [[ "${1:-}" == "--list-presets" ]]; then
+    list_presets
+    exit 0
+fi
+
 # =====================================================================
 # Banner
 # =====================================================================
@@ -251,6 +278,106 @@ fi
 echo
 
 # =====================================================================
+# Preset dispatcher (Quick / Custom + PRESET= bypass)
+# =====================================================================
+# Two new entry points sit in front of the existing interactive flow and
+# the FILE= non-interactive path:
+#
+#   1. PRESET=name (env var or `make configure PRESET=name`) — loads
+#      dockerimages/templates/<name>.env, asks only project name + Node
+#      (unless they're also supplied via env), then reuses the existing
+#      CONFIG_FILE validation path below.
+#   2. No flags + TTY — shows a "Quick / Custom" menu. Picking Quick
+#      surfaces the preset menu (with a "Custom" escape hatch); picking
+#      Custom anywhere falls through to the full interactive wizard.
+#
+# Both new paths converge on the existing CONFIG_FILE block by composing
+# a temporary file on the fly. Validation logic stays single-sourced.
+build_config_from_preset() {
+    local preset_name="$1"
+    local preset_file="${TEMPLATES_DIR}/${preset_name}.env"
+
+    if [[ ! -f "$preset_file" ]]; then
+        warn "preset not found: ${preset_name}"
+        list_presets >&2
+        die "pick one of the presets above (or omit PRESET= to use the full wizard)"
+    fi
+
+    # PROJECT_NAME: honour env-var (CLI / .env) when present, else prompt.
+    if [[ -z "${PROJECT_NAME:-}" ]]; then
+        local default_name
+        default_name="$(basename "$REPO_ROOT" | tr -cd '[:alnum:]-_' | tr '[:upper:]' '[:lower:]')"
+        [[ -z "$default_name" || "$default_name" == "magento-docker-bootstrap" ]] && default_name="myproject"
+        while true; do
+            PROJECT_NAME=$(ask "Project name (used for network, volumes, container prefix)" "$default_name")
+            if [[ "$PROJECT_NAME" =~ ^[a-z][a-z0-9_-]{1,30}$ ]]; then break; fi
+            warn "lowercase letters, digits, '-' or '_' only; must start with a letter (max 31 chars)"
+        done
+    fi
+
+    # SITE_HOST: env-var wins; otherwise derive from project name.
+    SITE_HOST="${SITE_HOST:-${PROJECT_NAME}.local}"
+
+    # USE_NODE: env-var wins; otherwise prompt. Presets deliberately omit
+    # USE_NODE so the wizard can ask it (most users don't need Node).
+    if [[ -z "${USE_NODE:-}" ]]; then
+        USE_NODE=$(ask_yn "Add Node.js container (frontend tooling, Vite HMR)?" "n")
+    fi
+
+    # Compose a synthetic CONFIG_FILE so the existing non-interactive
+    # validation path runs unchanged. The temp file gets removed on EXIT
+    # even if validation later die()s.
+    local tmpfile
+    tmpfile="$(mktemp -t magento-preset-XXXXXX.env)"
+    {
+        cat "$preset_file"
+        printf 'PROJECT_NAME=%s\n' "$PROJECT_NAME"
+        printf 'SITE_HOST=%s\n'    "$SITE_HOST"
+        printf 'USE_NODE=%s\n'     "$USE_NODE"
+    } > "$tmpfile"
+    trap 'rm -f "'"$tmpfile"'"' EXIT
+
+    CONFIG_FILE="$tmpfile"
+    _CONFIG_FROM_PRESET="$preset_name"
+}
+
+# Path 1: PRESET= env var → straight into the preset path.
+if [[ -n "${PRESET:-}" && -z "${CONFIG_FILE:-}" ]]; then
+    build_config_from_preset "$PRESET"
+# Path 2: no flags + TTY → Quick / Custom dispatcher.
+elif [[ -z "${CONFIG_FILE:-}" && -t 0 ]]; then
+    INITIAL_CHOICE=$(choose "How do you want to set this up?" \
+        "Quick    — pick a curated stack preset    (2 quick questions)" \
+        "Custom   — full wizard, every option      (8 questions)")
+    if [[ "$INITIAL_CHOICE" == Quick* ]]; then
+        _preset_names=(); _preset_labels=()
+        if compgen -G "${TEMPLATES_DIR}/*.env" > /dev/null; then
+            for f in "${TEMPLATES_DIR}"/*.env; do
+                _n="$(basename "$f" .env)"
+                _d="$(grep -m1 '^# Description:' "$f" | sed 's/^# Description: *//')"
+                _preset_names+=("$_n")
+                _preset_labels+=("$(printf '%-20s %s' "$_n" "$_d")")
+            done
+        fi
+        if [[ ${#_preset_names[@]} -eq 0 ]]; then
+            warn "no presets found in ${TEMPLATES_DIR} — falling back to the custom wizard"
+        else
+            # Escape hatch: pick Custom from inside the preset menu and
+            # we fall through to the existing interactive flow.
+            _preset_labels+=("$(printf '%-20s %s' 'Custom' '— none of the above, go to full wizard')")
+            echo
+            PRESET_CHOICE=$(choose "Pick a preset:" "${_preset_labels[@]}")
+            if [[ "$PRESET_CHOICE" != Custom* ]]; then
+                # The label is `<name>  …` padded to 20 chars; first whitespace-
+                # separated token is the preset name.
+                _picked="${PRESET_CHOICE%% *}"
+                build_config_from_preset "$_picked"
+            fi
+        fi
+    fi
+fi
+
+# =====================================================================
 # Non-interactive mode (CI / scripted setups)
 # =====================================================================
 # If CONFIG_FILE is set, read all answers from that file instead of
@@ -261,10 +388,17 @@ echo
 # Usage: CONFIG_FILE=path/to/answers.env make configure
 # Or:    make configure FILE=path/to/answers.env
 # (the Makefile target translates FILE into CONFIG_FILE)
+#
+# The preset dispatcher above can also set CONFIG_FILE to a temporary
+# composed file — same validation, different origin.
 # ---------------------------------------------------------------------
 if [[ -n "${CONFIG_FILE:-}" ]]; then
     [[ -f "$CONFIG_FILE" ]] || die "CONFIG_FILE not found: $CONFIG_FILE"
-    say "Non-interactive mode → reading answers from ${C_GREEN}${CONFIG_FILE}${C_RESET}"
+    if [[ -n "${_CONFIG_FROM_PRESET:-}" ]]; then
+        say "Using preset ${C_GREEN}${_CONFIG_FROM_PRESET}${C_RESET}"
+    else
+        say "Non-interactive mode → reading answers from ${C_GREEN}${CONFIG_FILE}${C_RESET}"
+    fi
 
     # shellcheck disable=SC1090
     set -a; . "$CONFIG_FILE"; set +a

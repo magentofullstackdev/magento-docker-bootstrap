@@ -15,6 +15,7 @@ cd "$REPO_ROOT"
 
 MODE="${1:-fast}"
 FIXTURES_DIR="$REPO_ROOT/tests/fixtures"
+TEMPLATES_DIR="$REPO_ROOT/dockerimages/templates"
 PASSED=0
 FAILED=0
 FAILED_NAMES=()
@@ -160,10 +161,79 @@ print('services:', sorted(d['services'].keys()))
     pass "$fixture_name (full mode completed)"
 }
 
+# ---- preset-driven test runner -------------------------------------------
+# Mirrors run_scenario but invokes init.sh through the PRESET= entry point.
+# PROJECT_NAME / SITE_HOST / USE_NODE are passed as env vars so init.sh skips
+# the prompts and validates the preset against the compatibility matrix
+# exactly the way `make configure PRESET=name` would.
+run_preset() {
+    local preset_name="$1"
+    local preset_file="$TEMPLATES_DIR/${preset_name}.env"
+
+    hdr "preset: $preset_name"
+
+    [[ -f "$preset_file" ]] || { fail "$preset_name (preset file not found)"; return; }
+
+    rm -f "$REPO_ROOT/.env" "$REPO_ROOT/compose.yaml"
+    if [[ "$HAS_DOCKER" -eq 1 ]]; then
+        docker compose -p smoketest down -v --remove-orphans 2>/dev/null || true
+    fi
+
+    if ! PRESET="$preset_name" PROJECT_NAME=smoketest SITE_HOST=smoketest.local USE_NODE=no \
+            bash dockerimages/bin/init.sh > /tmp/smoke-configure.log 2>&1; then
+        fail "$preset_name (configure failed)"
+        sed 's/^/    /' /tmp/smoke-configure.log
+        return
+    fi
+    pass "preset produced .env + compose.yaml"
+
+    if [[ "$HAS_YAML" -eq 1 ]]; then
+        if python3 -c "
+import yaml, sys
+d = yaml.safe_load(open('compose.yaml'))
+assert 'services' in d, 'no services key'
+assert 'db' in d['services'], 'no db service'
+assert 'php-fpm' in d['services'], 'no php-fpm service'
+assert 'web' in d['services'], 'no web service'
+assert 'opensearch' in d['services'], 'no opensearch service'
+print('services:', sorted(d['services'].keys()))
+" > /tmp/smoke-yaml.log 2>&1; then
+            pass "compose.yaml structurally valid ($(grep services: /tmp/smoke-yaml.log | head -1))"
+        else
+            fail "$preset_name (YAML validation failed)"
+            sed 's/^/    /' /tmp/smoke-yaml.log
+            return
+        fi
+    fi
+
+    if [[ "$HAS_DOCKER" -eq 1 ]]; then
+        if docker compose config -q > /tmp/smoke-config.log 2>&1; then
+            pass "docker compose config -q passes"
+        else
+            fail "$preset_name (docker compose config failed)"
+            sed 's/^/    /' /tmp/smoke-config.log
+            return
+        fi
+    fi
+
+    pass "$preset_name (preset path validated)"
+}
+
 # ---- run all fixtures ----------------------------------------------------
 for fixture in minimal full-stack mageos magento-249; do
     run_scenario "$fixture" || true
 done
+
+# ---- run every preset shipped under dockerimages/templates/ -------------
+# Catches matrix drift: if someone updates the matrix in init.sh without
+# bumping the preset (or vice versa), validation will die here.
+if compgen -G "$TEMPLATES_DIR/*.env" > /dev/null; then
+    for preset_file in "$TEMPLATES_DIR"/*.env; do
+        run_preset "$(basename "$preset_file" .env)" || true
+    done
+else
+    info "no presets in $TEMPLATES_DIR — skipping preset checks"
+fi
 
 # ---- final cleanup -------------------------------------------------------
 rm -f "$REPO_ROOT/.env" "$REPO_ROOT/compose.yaml"

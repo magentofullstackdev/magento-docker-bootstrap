@@ -31,7 +31,13 @@ Walk through one of the three scenarios in [docs/INSTALL.md](docs/INSTALL.md), d
 
 ### "Set this up without answering 8 questions"
 
-`make configure FILE=path/to/answers.env` reads the same keys the interactive flow asks for. `tests/fixtures/minimal.env` is a working template. Required keys: `PROJECT_NAME`, `SITE_HOST`, `FLAVOUR`, `MAGENTO_VERSION`, `PHP_VERSION`, `DB_ENGINE`, `DB_VERSION`, `OPENSEARCH_VERSION`, `USE_VARNISH`, `USE_NODE`.
+Three options, in order of how scripted the setup needs to be:
+
+1. **Quick wizard** — `make configure` opens with a Quick / Custom menu. Quick lists the shipped presets (`make presets` for the list) and only asks for project name + Node. Inside the preset menu, picking *Custom* falls through into the original 8-question wizard. Best for first-time users.
+2. **Preset bypass** — `make configure PRESET=magento-latest [PROJECT_NAME=foo DOMAIN=foo.local USE_NODE=no]`. Skips the menu entirely; with all three optional vars set, no prompts at all. The preset lives at `dockerimages/templates/<name>.env` and gets validated against the compatibility matrix exactly like a `FILE=` config would.
+3. **Full file** — `make configure FILE=path/to/answers.env` reads the same keys the interactive flow asks for. `tests/fixtures/minimal.env` is a working template. Required keys: `PROJECT_NAME`, `SITE_HOST`, `FLAVOUR`, `MAGENTO_VERSION`, `PHP_VERSION`, `DB_ENGINE`, `DB_VERSION`, `OPENSEARCH_VERSION`, `USE_VARNISH`, `USE_NODE`.
+
+Use 1 for hand-on-keyboard work, 2 for "I know which preset I want", 3 for CI fixtures.
 
 ### "It's not loading at https://example.local"
 
@@ -141,6 +147,7 @@ If you edit any bash script, run `shellcheck` locally before reporting the chang
 | `dockerimages/config/php-fpm/users/.bashrc` | Aliases mounted live into the container | When adding/changing aliases. No rebuild needed. |
 | `dockerimages/config/php-fpm/users/.bash_history` | Persistent shell history. | Don't edit — it grows naturally. |
 | `dockerimages/bin/init.sh` | Configurator (compatibility matrix `MAGENTO_VERSIONS` + `MAGEOS_VERSIONS` lives here; MageOS tracks Magento upstream with its own 2.x semantic versioning) | Only for adding new Magento / MageOS versions. |
+| `dockerimages/templates/*.env` | Curated stack presets surfaced by `make presets` / `make configure PRESET=…` | When adding a new shipped preset, or after a matrix change that invalidates an existing preset. `tests/smoke.sh` re-validates every preset against the matrix on each run. |
 
 ## Useful diagnostic commands
 

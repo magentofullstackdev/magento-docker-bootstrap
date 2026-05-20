@@ -7,7 +7,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="${REPO_ROOT}/.env"
-TEMPLATES="${REPO_ROOT}/dockerimages/templates"
 OUT="${REPO_ROOT}/compose.yaml"
 
 [[ -f "$ENV_FILE" ]] || { echo "✗ .env not found — run 'make init' first" >&2; exit 1; }
