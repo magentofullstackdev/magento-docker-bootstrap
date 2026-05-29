@@ -88,6 +88,8 @@ Edit `.env`:
 - For MageOS, valid `MAGENTO_VERSION` values follow 2.x semantic versioning — currently `2.3.0`, `2.2.2`, `2.2.1`, `2.2.0`, `2.1.0`, `2.0.0` (see `MAGEOS_VERSIONS`). 2.3.0 tracks Magento 2.4.8-p5 (final 2.x release before MageOS 3.0); the 2.2.x line tracks 2.4.8; 2.0 / 2.1 track 2.4.8-p3.
 - `PHP_VERSION=8.4` (must be allowed for that Magento release)
 - `OPENSEARCH_VERSION=3.0.0` (must be allowed for that Magento release)
+- `CACHE_ENGINE=valkey` (Adobe default since 2.4.6-p11). Use `redis` only for legacy patches; 2.4.9 forces Valkey (Adobe dropped Redis). The Docker service name stays `redis` in both cases so existing `app/etc/env.php` keeps working.
+- `DB_ENGINE=mariadb` — MySQL was dropped from Adobe's certified matrix on 2.4.6 / 2.4.7 after the MySQL 8.0 EOS (30 Apr 2026); 2.4.8 and 2.4.9 keep MySQL 8.4 only. The wizard auto-skips the question on releases where MySQL is unavailable.
 
 Then:
 

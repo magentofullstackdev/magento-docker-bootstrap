@@ -17,13 +17,17 @@ set -a; . "$ENV_FILE"; set +a
 # Default if .env is hand-edited and missing the var
 DOCKER_SUBNET_BASE="${DOCKER_SUBNET_BASE:-5}"
 
-# Defensive defaults for the Redis / Varnish image tags. The configurator
+# Defensive defaults for cache + Varnish image tags. The configurator
 # always writes these into .env, but a hand-edited .env from an older
-# checkout could be missing them — fall back to the most permissive modern
-# versions in that case rather than failing to render.
+# checkout could be missing them - fall back to current Adobe defaults
+# (Valkey 8.1, Varnish 7.7) rather than failing to render. CACHE_ENGINE
+# defaults to "valkey" because Adobe stopped certifying Redis on all
+# current patches.
+CACHE_ENGINE="${CACHE_ENGINE:-valkey}"
 REDIS_VERSION="${REDIS_VERSION:-7.4}"
+VALKEY_VERSION="${VALKEY_VERSION:-8.1}"
 VARNISH_VERSION="${VARNISH_VERSION:-7.7}"
-export REDIS_VERSION VARNISH_VERSION
+export CACHE_ENGINE REDIS_VERSION VALKEY_VERSION VARNISH_VERSION
 
 # Container IP plan (linux only). On mac we use service-name DNS.
 # All IPs are 10.10.<DOCKER_SUBNET_BASE>.<last-octet>; only the last octet
@@ -127,13 +131,41 @@ services:
 EOF
 render_network db DB_IP
 
+# Cache service. Adobe replaced Redis with Valkey across the 2.4.x line
+# starting at 2.4.6-p11 / 2.4.7-p5 / 2.4.8 / 2.4.9 (Redis 7.2 EOS + license
+# change). The service NAME stays `redis` even when running Valkey: phpredis
+# and every existing app/etc/env.php connect by hostname `redis:6379` and
+# Valkey is RESP-protocol-compatible, so the upstream change is transparent.
+# Healthcheck binary differs (valkey-cli vs redis-cli) - pick the one the
+# image actually ships.
+if [[ "${CACHE_ENGINE}" == "valkey" ]]; then
 cat <<EOF
 
-  # Redis tag is auto-selected from REDIS_VERSION in .env, which the
-  # configurator pulls from the per-Magento-version compat matrix
-  # (e.g. 2.4.6 → 7.0, 2.4.7 → 7.2, 2.4.8/2.4.9 → 7.4 per Adobe).
-  # MageOS allows Redis 7.0+ or Valkey — swap the image line to
-  # valkey/valkey:8-alpine if you want Valkey instead.
+  # Valkey (Adobe's current cache backend). Override CACHE_ENGINE=redis in
+  # .env to fall back to Redis on legacy patches (2.4.6 pre-p11, etc).
+  redis:
+    image: 'valkey/valkey:${VALKEY_VERSION}-alpine'
+    ports:
+      - "6379"
+    sysctls:
+      net.core.somaxconn: 1024
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
+    healthcheck:
+      test: 'valkey-cli ping || exit 1'
+      interval: 30s
+      timeout: 30s
+      retries: 3
+EOF
+else
+cat <<EOF
+
+  # Redis (legacy cache backend). The Magento patches this matches are
+  # listed in dockerimages/bin/init.sh; for new installs Adobe recommends
+  # Valkey - set CACHE_ENGINE=valkey in .env to switch.
   redis:
     image: 'redis:${REDIS_VERSION}-alpine'
     ports:
@@ -151,6 +183,7 @@ cat <<EOF
       timeout: 30s
       retries: 3
 EOF
+fi
 render_network redis REDIS_IP
 
 cat <<EOF

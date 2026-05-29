@@ -234,9 +234,10 @@ The initializer opens with a two-option menu:
   3. Platform: Magento 2 (Open Source / Adobe Commerce) vs MageOS.
   4. Version (sorted newest-first).
   5. PHP version (only the versions compatible with the chosen Magento release).
-  6. Database engine and version.
-  7. Whether to enable Varnish.
-  8. Whether to enable Node.js.
+  6. Database engine and version. MySQL is auto-skipped on releases where Adobe dropped it (currently 2.4.6 / 2.4.7 on-prem after the MySQL 8.0 EOS, 30 Apr 2026).
+  7. Cache backend (Valkey or Redis). Only asked when the matrix lists both; otherwise auto-picked (e.g. 2.4.9 ships Valkey only).
+  8. Whether to enable Varnish.
+  9. Whether to enable Node.js.
 
 Both paths write `.env` and render `compose.yaml` through the same code path — the preset path simply composes a synthetic config file on the fly so it goes through the same compatibility-matrix validation as the `FILE=` flow.
 
@@ -255,11 +256,33 @@ Run `make presets` for the live list. Currently:
 
 | Preset | Stack |
 |---|---|
-| `magento-latest` | Magento 2.4.9 + PHP 8.4 + MariaDB 11.4 + OpenSearch 3.0 + Varnish |
-| `magento-legacy` | Magento 2.4.6 + PHP 8.2 + MariaDB 10.6 + OpenSearch 2.5 + Varnish |
-| `mageos-latest`  | MageOS 2.3.0 + PHP 8.4 + MariaDB 11.4 + OpenSearch 3.0 + Varnish |
+| `magento-latest`  | Magento 2.4.9 + PHP 8.4 + MariaDB 11.8 + OpenSearch 3.0 + Valkey 9 + Varnish 8 |
+| `magento-current` | Magento 2.4.8 + PHP 8.4 + MariaDB 11.8 + OpenSearch 3.0 + Valkey 8.1 + Varnish 7.7 |
+| `magento-legacy`  | Magento 2.4.6 + PHP 8.2 + MariaDB 10.11 + OpenSearch 2.19 + Redis 7.0 + Varnish 8 |
+| `mageos-latest`   | MageOS 2.3.0 + PHP 8.4 + MariaDB 11.8 + OpenSearch 3.0 + Valkey 8.1 + Varnish 7.7 |
 
 Presets live in `dockerimages/templates/*.env` and ship without `PROJECT_NAME`, `SITE_HOST` or `USE_NODE` — those are per-project and come from the wizard (or env vars). Each one is exercised by `make test` against the compatibility matrix, so a matrix change without a corresponding preset bump fails CI.
+
+### Cache backend (Valkey vs Redis)
+
+Adobe replaced Redis with Valkey across the 2.4.x line starting at
+2.4.6-p11 / 2.4.7-p5 / 2.4.8 / 2.4.9 (Redis 7.2 reached EOS and the Redis
+license change made the upstream Redis image incompatible with Adobe's
+distribution model). The wizard exposes the choice as `CACHE_ENGINE` in
+`.env`:
+
+- `CACHE_ENGINE=valkey` (default on every release where Adobe certifies it).
+  Image: `valkey/valkey:${VALKEY_VERSION}-alpine`. 2.4.9 forces this -
+  Adobe does not certify Redis at all on 2.4.9.
+- `CACHE_ENGINE=redis` (legacy). Image: `redis:${REDIS_VERSION}-alpine`.
+  Pick this if your codebase pins to a patch level below Valkey adoption
+  (e.g. 2.4.6 baseline through 2.4.6-p10).
+
+The Docker service NAME stays `redis` in both cases, so `app/etc/env.php`
+keeps pointing at `redis:6379`: Valkey is RESP-protocol-compatible with
+Redis, so phpredis (the PECL client baked into the php-fpm image) needs
+no changes. Flip `CACHE_ENGINE` in `.env` and run `make rebuild-config &&
+make restart` to switch engines without touching anything else.
 
 To regenerate `compose.yaml` after editing `.env` by hand, run `make rebuild-config` (no questions). To start over, `make clean-all`.
 
@@ -278,6 +301,7 @@ To regenerate `compose.yaml` after editing `.env` by hand, run `make rebuild-con
     │   └── render-compose.sh    # idempotent compose renderer
     ├── templates/               # stack presets surfaced by `make presets`
     │   ├── magento-latest.env
+    │   ├── magento-current.env
     │   ├── magento-legacy.env
     │   └── mageos-latest.env
     └── config/

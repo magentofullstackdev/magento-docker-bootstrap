@@ -111,57 +111,75 @@ pick_subnet() {
 }
 
 # ---------- compatibility matrix ----------------------------------------
-# Format per Magento version:
+# Format per Magento version (pipe-separated key=value pairs):
 #   php                       : space-separated PHP candidates
 #   recommended (PHP)         : sensible default
-#   mariadb / mysql           : compatible DB tags
+#   mariadb / mysql           : compatible DB tags. `mysql=` may be absent
+#                               when Adobe no longer certifies any MySQL
+#                               version for that release (2.4.6, 2.4.7 on
+#                               on-prem after MySQL 8.0 EOS - 30 Apr 2026).
 #   opensearch                : space-separated OpenSearch versions (uses
 #                               opensearchproject/opensearch images)
 #   opensearch_recommended    : default OpenSearch version
 #   composer                  : "1" or "2"
+#   redis                     : Redis tag for redis:TAG-alpine.
+#                               Absent on 2.4.9 - Adobe drops Redis support
+#                               entirely there in favour of Valkey.
+#   valkey                    : Valkey tag for valkey/valkey:TAG-alpine.
+#                               Adobe added Valkey to the certified matrix
+#                               from 2.4.6-p11 / 2.4.7-p5 / 2.4.8 / 2.4.9
+#                               (Redis 7.2 EOS + license change).
+#   valkey_recommended        : default Valkey tag - used when CACHE_ENGINE
+#                               is unset / "valkey"
+#   varnish                   : Varnish tag
 #
-# OpenSearch versions chosen from Adobe's official compatibility tables:
-#   - 2.4.6: officially OpenSearch 2.5.x; later versions tested in practice
-#   - 2.4.7: officially OpenSearch 2.12.x; 2.19.x works
-#   - 2.4.8: OpenSearch 2.19.x officially; OpenSearch 3.x in -p3+
-#   - 2.4.9: OpenSearch 3.x officially; 2.19.x kept for migration paths
-# We standardise on OpenSearch 2.x+ across the board (1.x dropped) so the
-# image can install plugins via OPENSEARCH_PLUGINS env var.
-#
-# 2.4.9 (released May 2026) tightens supported versions significantly:
-# PHP 8.4/8.5 only (8.3 is upgrade-only, not fresh-install), MariaDB 11.4
-# only, MySQL 8.4 only, OpenSearch 3.x recommended. PHP 8.2, MySQL 8.0,
-# and MariaDB 10.6 are dropped entirely.
+# Sources: Adobe Commerce system-requirements (experienceleague.adobe.com)
+# and MageOS upstream (mage-os.org).
 # ------------------------------------------------------------------------
-# Redis and Varnish are also auto-selected from the matrix below, so each
-# Magento patch boots with the version Adobe certifies on its system-
-# requirements page. We don't ask the user — getting these right is more
-# important than offering choice, and a wrong combination (e.g. Redis 7.4
-# against Magento 2.4.6, which Adobe only certifies on Redis 6.2 / 7.0) is
-# the kind of subtle drift that's painful to debug.
+# Cache engine (Redis vs Valkey) is exposed as an interactive choice in the
+# wizard when both are listed in the spec. Default is `valkey` because Adobe
+# has stopped certifying Redis on every current patch (Valkey 8/8.1/9 is the
+# new baseline). Redis stays selectable for installations that still pin to
+# a pre-Valkey patch level (e.g. 2.4.6 baseline through 2.4.6-p10) - users
+# can switch back via CACHE_ENGINE=redis in .env.
+# ------------------------------------------------------------------------
+# OpenSearch / Varnish ranges follow Adobe's per-patch tables:
+#   - 2.4.6-p15: OS 2.19/3, Varnish 8
+#   - 2.4.7-p10: OS 2.19/3, Varnish 8
+#   - 2.4.8-p5:  OS 3,      Varnish 7.7 (Adobe deliberately did not bump
+#                                        2.4.8 to Varnish 8 - VCL quirk)
+#   - 2.4.9:     OS 3 only, Varnish 8
+# We standardise on OpenSearch 2.x+ so the official image installs the
+# analysis-icu / analysis-phonetic plugins via OPENSEARCH_PLUGINS env var.
+# ------------------------------------------------------------------------
+# 2.4.9 (released 12 May 2026) significantly tightens supported versions:
+# PHP 8.4/8.5 only (8.3 upgrade-only, 8.2 dropped), MariaDB 11.4 / 11.8,
+# MySQL 8.4 only, OpenSearch 3.x only, Valkey 9 only (no Redis).
 declare -A MAGENTO_VERSIONS=(
-    [2.4.6]="php=8.1 8.2|recommended=8.2|mariadb=10.4 10.6|mysql=8.0|opensearch=2.5.0 2.12.0|opensearch_recommended=2.5.0|composer=2|redis=7.0|varnish=7.1"
-    [2.4.7]="php=8.2 8.3|recommended=8.3|mariadb=10.6 10.11|mysql=8.0|opensearch=2.12.0 2.19.0|opensearch_recommended=2.12.0|composer=2|redis=7.2|varnish=7.4"
-    [2.4.8]="php=8.3 8.4|recommended=8.3|mariadb=10.6 11.4|mysql=8.0 8.4|opensearch=2.12.0 2.19.0 3.0.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|varnish=7.6"
-    [2.4.9]="php=8.4 8.5|recommended=8.4|mariadb=11.4|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|varnish=7.7"
+    [2.4.6]="php=8.1 8.2|recommended=8.2|mariadb=10.11 11.8|opensearch=2.19.0 3.0.0|opensearch_recommended=2.19.0|composer=2|redis=7.0|valkey=8.1|valkey_recommended=8.1|varnish=8"
+    [2.4.7]="php=8.2 8.3|recommended=8.3|mariadb=10.11 11.8|opensearch=2.19.0 3.0.0|opensearch_recommended=2.19.0|composer=2|redis=7.2|valkey=8.1|valkey_recommended=8.1|varnish=8"
+    [2.4.8]="php=8.3 8.4|recommended=8.4|mariadb=10.6 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.4.9]="php=8.4 8.5|recommended=8.4|mariadb=11.4 11.8|mysql=8.4|opensearch=3.0.0|opensearch_recommended=3.0.0|composer=2|valkey=9|valkey_recommended=9|varnish=8"
 )
 
-# MageOS is API-compatible with Magento Open Source — same matrix shape.
+# MageOS is API-compatible with Magento Open Source - same matrix shape.
 # MageOS versions track Magento upstream: 2.3.0 is the rebuild of the
 # Magento 2.4.8-p5 codebase (final 2.x release before MageOS 3.0 / Magento
 # 2.4.9); the 2.2.x line tracks 2.4.8, and 2.1 / 2.0 track 2.4.8-p3.
 # The compatibility matrix below mirrors the official MageOS one at
-# https://mage-os.org/get-started/system-requirements/. PHP, DB and search
-# version ranges are deliberately broader than Adobe's per-patch certified
-# matrix because MageOS publishes a single matrix that spans the whole 2.x
-# series (PHP 8.2–8.4, MariaDB 10.6+, MySQL 8.0+, OpenSearch 2+).
+# https://mage-os.org/get-started/system-requirements/. MageOS upstream
+# moves more slowly than Adobe: Varnish 7.7 stays (no Varnish 8 yet),
+# Valkey 8.0 baseline (8.1 on the newer 2.2.x / 2.3.0 because they track
+# 2.4.8-p5 which Adobe certifies on Valkey 8.1), PHP 8.3-8.4 only (8.2
+# dropped from MageOS docs as of May 2026), MySQL 8.4 only (8.0 dropped
+# after Apr 2026 EOS).
 declare -A MAGEOS_VERSIONS=(
-    [2.3.0]="php=8.2 8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4|mysql=8.0 8.4|opensearch=2.12.0 2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|varnish=7.7"
-    [2.2.2]="php=8.2 8.3 8.4|recommended=8.3|mariadb=10.6 10.11 11.4|mysql=8.0 8.4|opensearch=2.12.0 2.19.0 3.0.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|varnish=7.7"
-    [2.2.1]="php=8.2 8.3 8.4|recommended=8.3|mariadb=10.6 10.11 11.4|mysql=8.0 8.4|opensearch=2.12.0 2.19.0 3.0.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|varnish=7.7"
-    [2.2.0]="php=8.2 8.3 8.4|recommended=8.3|mariadb=10.6 10.11 11.4|mysql=8.0 8.4|opensearch=2.12.0 2.19.0 3.0.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|varnish=7.7"
-    [2.1.0]="php=8.2 8.3 8.4|recommended=8.3|mariadb=10.6 10.11 11.4|mysql=8.0 8.4|opensearch=2.12.0 2.19.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|varnish=7.6"
-    [2.0.0]="php=8.2 8.3 8.4|recommended=8.3|mariadb=10.6 10.11 11.4|mysql=8.0 8.4|opensearch=2.12.0 2.19.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|varnish=7.6"
+    [2.3.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.2.2]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.2.1]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.2.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.1.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4|mysql=8.4|opensearch=2.19.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|valkey=8.0|valkey_recommended=8.0|varnish=7.6"
+    [2.0.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4|mysql=8.4|opensearch=2.19.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|valkey=8.0|valkey_recommended=8.0|varnish=7.6"
 )
 
 # Helper: parse "k1=v1|k2=v2" into associative array `OUT`
@@ -445,6 +463,12 @@ if [[ -n "${CONFIG_FILE:-}" ]]; then
         mariadb|mysql) ;;
         *) die "DB_ENGINE must be 'mariadb' or 'mysql' (got: $DB_ENGINE)" ;;
     esac
+    # MySQL was dropped from 2.4.6 / 2.4.7 after MySQL 8.0 EOS (Apr 2026).
+    # Reject configs that pin DB_ENGINE=mysql for a release with no mysql=
+    # entry in the SPEC.
+    if [[ "$DB_ENGINE" == "mysql" && -z "${SPEC[mysql]:-}" ]]; then
+        die "MySQL is not certified on $FLAVOUR $MAGENTO_VERSION (set DB_ENGINE=mariadb)"
+    fi
     read -ra DB_OPTS <<< "${SPEC[$DB_ENGINE]}"
     db_ok=0
     for v in "${DB_OPTS[@]}"; do [[ "$v" == "$DB_VERSION" ]] && db_ok=1; done
@@ -456,6 +480,24 @@ if [[ -n "${CONFIG_FILE:-}" ]]; then
     for v in "${OS_OPTS[@]}"; do [[ "$v" == "$OPENSEARCH_VERSION" ]] && os_ok=1; done
     [[ $os_ok -eq 1 ]] || die "OpenSearch $OPENSEARCH_VERSION is not compatible with $FLAVOUR $MAGENTO_VERSION (allowed: ${OS_OPTS[*]})"
 
+    # Validate CACHE_ENGINE (optional - defaults to valkey when available,
+    # otherwise redis). Reject mismatches against the SPEC: e.g. setting
+    # CACHE_ENGINE=redis on 2.4.9 (where Adobe certifies only Valkey) is
+    # the kind of drift we want to catch in fixtures.
+    if [[ -z "${CACHE_ENGINE:-}" ]]; then
+        if [[ -n "${SPEC[valkey]:-}" ]]; then CACHE_ENGINE="valkey"; else CACHE_ENGINE="redis"; fi
+    fi
+    case "$CACHE_ENGINE" in
+        redis)
+            [[ -n "${SPEC[redis]:-}" ]] \
+                || die "CACHE_ENGINE=redis is not certified on $FLAVOUR $MAGENTO_VERSION (Adobe dropped Redis - use CACHE_ENGINE=valkey)" ;;
+        valkey)
+            [[ -n "${SPEC[valkey]:-}" ]] \
+                || die "CACHE_ENGINE=valkey is not available on $FLAVOUR $MAGENTO_VERSION (use CACHE_ENGINE=redis)" ;;
+        *)
+            die "CACHE_ENGINE must be 'redis' or 'valkey' (got: $CACHE_ENGINE)" ;;
+    esac
+
     # Normalise yes/no values
     case "$USE_VARNISH" in y|yes|Y|YES|true|1)  USE_VARNISH=yes ;; *) USE_VARNISH=no ;; esac
     case "$USE_NODE"    in y|yes|Y|YES|true|1)  USE_NODE=yes    ;; *) USE_NODE=no    ;; esac
@@ -463,7 +505,7 @@ if [[ -n "${CONFIG_FILE:-}" ]]; then
     # Derived values that the interactive flow computes
     SITE_NAME="$(echo "${PROJECT_NAME:0:1}" | tr '[:lower:]' '[:upper:]')${PROJECT_NAME:1}"
 
-    ok "validated config: ${FLAVOUR} ${MAGENTO_VERSION} / PHP ${PHP_VERSION} / ${DB_ENGINE}:${DB_VERSION} / OpenSearch ${OPENSEARCH_VERSION}"
+    ok "validated config: ${FLAVOUR} ${MAGENTO_VERSION} / PHP ${PHP_VERSION} / ${DB_ENGINE}:${DB_VERSION} / OpenSearch ${OPENSEARCH_VERSION} / cache ${CACHE_ENGINE}"
 
     # Skip ahead to the .env writing step
     SKIP_INTERVIEW=1
@@ -519,11 +561,47 @@ PHP_VERSION=$(choose "Pick a PHP version" "${PHP_OPTS[@]}")
 # =====================================================================
 # Q5: database engine + version
 # =====================================================================
+# Skip the engine question on releases where Adobe / MageOS dropped MySQL
+# certification (currently 2.4.6 and 2.4.7 on-prem after the MySQL 8.0
+# EOS on 30 Apr 2026). When `mysql=` is missing from the spec, auto-pick
+# MariaDB; the user can still override DB_VERSION below.
 echo
-DB_ENGINE=$(choose "Database engine" "mariadb" "mysql")
+if [[ -n "${SPEC[mysql]:-}" ]]; then
+    DB_ENGINE=$(choose "Database engine" "mariadb" "mysql")
+else
+    DB_ENGINE="mariadb"
+    say "MySQL is not certified on ${FLAVOUR} ${MAGENTO_VERSION} (Adobe dropped support after MySQL 8.0 EOS, Apr 2026). Auto-selecting MariaDB."
+fi
 read -ra DB_OPTS <<< "${SPEC[$DB_ENGINE]}"
 echo
 DB_VERSION=$(choose "Pick a ${DB_ENGINE} version" "${DB_OPTS[@]}")
+
+# =====================================================================
+# Q5.5: cache backend (Redis or Valkey)
+# =====================================================================
+# Adobe has been replacing Redis with Valkey across the 2.4.x line since
+# 2.4.6-p11 (Redis 7.2 EOS + Redis license change). On 2.4.9 Adobe drops
+# Redis entirely from the certified matrix (only `valkey=` in the SPEC).
+# Three cases:
+#   1. SPEC has both redis= and valkey= -> ask, default valkey.
+#   2. SPEC has only valkey= -> auto-pick valkey, no question.
+#   3. SPEC has only redis=  -> auto-pick redis, no question.
+echo
+if [[ -n "${SPEC[redis]:-}" && -n "${SPEC[valkey]:-}" ]]; then
+    CACHE_CHOICE=$(choose "Cache backend (Valkey is Adobe's current default; Redis kept for legacy patches)" \
+        "valkey   (recommended - Valkey ${SPEC[valkey_recommended]})" \
+        "redis    (legacy - Redis ${SPEC[redis]})")
+    case "$CACHE_CHOICE" in
+        valkey*) CACHE_ENGINE="valkey" ;;
+        redis*)  CACHE_ENGINE="redis"  ;;
+    esac
+elif [[ -n "${SPEC[valkey]:-}" ]]; then
+    CACHE_ENGINE="valkey"
+    say "Cache backend: ${C_GREEN}valkey ${SPEC[valkey_recommended]}${C_RESET} (Adobe does not certify Redis on ${FLAVOUR} ${MAGENTO_VERSION})."
+else
+    CACHE_ENGINE="redis"
+    say "Cache backend: ${C_GREEN}redis ${SPEC[redis]}${C_RESET}."
+fi
 
 # =====================================================================
 # Q6: OpenSearch version
@@ -557,15 +635,27 @@ USE_NODE=$(ask_yn "Add Node.js container (frontend tooling, Vite HMR)?" "n")
 fi  # end SKIP_INTERVIEW guard — both branches converge here
 
 # ---------------------------------------------------------------------
-# Auto-select Redis and Varnish image versions from the per-release spec.
-# These are not interactive choices: Adobe / MageOS publish exact compat
-# tables, and picking a mismatched Redis or Varnish is the kind of subtle
-# breakage we want to make impossible. Honour any explicit override coming
-# from CONFIG_FILE (so a CI fixture can pin a specific tag) but otherwise
-# fall back to the matrix-recommended version for the chosen release.
+# Auto-select Redis / Valkey / Varnish image versions from the per-release
+# spec. These are not interactive choices: Adobe / MageOS publish exact
+# compat tables, and picking a mismatched cache or Varnish is the kind of
+# subtle breakage we want to make impossible. Honour any explicit override
+# coming from CONFIG_FILE (so a CI fixture can pin a specific tag) but
+# otherwise fall back to the matrix-recommended version for the chosen
+# release. REDIS_VERSION and VALKEY_VERSION are both written to .env even
+# when only one is active - lets users flip CACHE_ENGINE without re-running
+# the wizard.
 # ---------------------------------------------------------------------
-REDIS_VERSION="${REDIS_VERSION:-${SPEC[redis]}}"
+REDIS_VERSION="${REDIS_VERSION:-${SPEC[redis]:-}}"
+VALKEY_VERSION="${VALKEY_VERSION:-${SPEC[valkey_recommended]:-${SPEC[valkey]:-}}}"
 VARNISH_VERSION="${VARNISH_VERSION:-${SPEC[varnish]}}"
+
+# Pick the cache summary line based on the engine actually selected, so the
+# user sees the exact image tag the renderer will use.
+if [[ "$CACHE_ENGINE" == "valkey" ]]; then
+    CACHE_SUMMARY="valkey/valkey:${VALKEY_VERSION}-alpine"
+else
+    CACHE_SUMMARY="redis:${REDIS_VERSION}-alpine"
+fi
 
 # =====================================================================
 # Summary + confirm
@@ -579,7 +669,7 @@ ${C_BOLD}─── Summary ─────────────────�
   PHP               : ${C_GREEN}${PHP_VERSION}${C_RESET}
   Database          : ${C_GREEN}${DB_ENGINE}:${DB_VERSION}${C_RESET}
   OpenSearch        : ${C_GREEN}opensearchproject/opensearch:${OPENSEARCH_VERSION}${C_RESET}
-  Redis             : ${C_GREEN}redis:${REDIS_VERSION}-alpine${C_RESET}
+  Cache (${CACHE_ENGINE})    : ${C_GREEN}${CACHE_SUMMARY}${C_RESET}
   Varnish           : ${C_GREEN}${USE_VARNISH}$([[ "$USE_VARNISH" == "yes" ]] && echo " (varnish:${VARNISH_VERSION})")${C_RESET}
   Node.js           : ${C_GREEN}${USE_NODE}${C_RESET}
   Static IPs        : ${C_GREEN}$([[ "$HOST_OS" == "linux" ]] && echo "yes (10.10.${SUBNET_BASE}.0/24)" || echo no)${C_RESET}
@@ -613,10 +703,20 @@ DB_ENGINE=${DB_ENGINE}
 DB_VERSION=${DB_VERSION}
 OPENSEARCH_VERSION=${OPENSEARCH_VERSION}
 
-# Redis + Varnish image tags — auto-selected from the per-release compat
-# matrix in init.sh. Override here only if you know your codebase needs a
-# different version than Adobe / MageOS officially certify.
+# Cache backend - "valkey" (Adobe default since 2.4.6-p11) or "redis".
+# render-compose.sh switches the cache service image based on this value.
+# The service NAME stays "redis" in compose so phpredis hostnames in
+# app/etc/env.php keep working unchanged.
+CACHE_ENGINE=${CACHE_ENGINE}
+
+# Cache + Varnish image tags - auto-selected from the per-release compat
+# matrix in init.sh. Override only if you know your codebase needs a
+# different version than Adobe / MageOS officially certify. REDIS_VERSION
+# and VALKEY_VERSION are both written so you can flip CACHE_ENGINE without
+# re-running the wizard. Lines with no value are intentional - they mean
+# Adobe does not certify that engine for this Magento release.
 REDIS_VERSION=${REDIS_VERSION}
+VALKEY_VERSION=${VALKEY_VERSION}
 VARNISH_VERSION=${VARNISH_VERSION}
 
 USE_VARNISH=${USE_VARNISH}

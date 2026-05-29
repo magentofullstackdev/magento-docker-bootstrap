@@ -5,6 +5,98 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-05-29
+
+Tracks Adobe's May 2026 system-requirements refresh: Valkey replaces Redis
+across the certified 2.4.x line, MariaDB 11.8 is added, MySQL 8.0 hits EOS,
+Varnish bumps to 8 on most releases.
+
+### Added
+
+- **Valkey as the default cache backend** on every release where Adobe now
+  certifies it (2.4.6-p11+, 2.4.7-p5+, 2.4.8 all patches, 2.4.9). New
+  `CACHE_ENGINE` variable in `.env` (`redis` | `valkey`) drives the choice;
+  the wizard asks it as a new Q5.5, defaulting to `valkey`. On 2.4.9 the
+  question is skipped entirely – Adobe dropped Redis from the certified
+  matrix, so `CACHE_ENGINE=valkey` is forced. The Docker service NAME stays
+  `redis` in both branches so phpredis hostnames in `app/etc/env.php` keep
+  working unchanged (Valkey is RESP-protocol-compatible). New
+  `VALKEY_VERSION` env var, auto-selected from the per-release matrix.
+- **`render-compose.sh` branches on `CACHE_ENGINE`** to swap the image
+  (`valkey/valkey:${VALKEY_VERSION}-alpine` vs `redis:${REDIS_VERSION}-alpine`)
+  and the healthcheck (`valkey-cli ping` vs `redis-cli ping`). Both image
+  versions are written to `.env` so flipping the engine after the fact only
+  takes editing one line.
+- **MariaDB 11.8** added to the matrix for 2.4.6, 2.4.7, 2.4.8, 2.4.9 and
+  MageOS 2.2.x / 2.3.0 (tracking Adobe's 2.4.6-p13+ / 2.4.7-p10 / 2.4.8-all
+  certification). 2.4.9 keeps 11.4 alongside.
+- **Varnish 8** on 2.4.6 / 2.4.7 / 2.4.9 (tracks Adobe's 2.4.6-p15 /
+  2.4.7-p10 / 2.4.9 on-prem matrix). 2.4.8 stays on 7.7 (Adobe deliberately
+  did not bump 2.4.8 - documented VCL behavior difference). MageOS 2.2.x /
+  2.3.0 stay on 7.7 (MageOS upstream not on Varnish 8 yet).
+- **New preset `magento-current`**: Magento 2.4.8 + PHP 8.4 + MariaDB 11.8
+  + OpenSearch 3.0 + Valkey 8.1 + Varnish 7.7. The "production today"
+  baseline, between `magento-latest` (2.4.9 bleeding edge) and
+  `magento-legacy` (2.4.6 pre-Valkey). Surfaced by `make presets` and the
+  Quick wizard.
+- **New fixture `tests/fixtures/valkey.env`**: exercises `CACHE_ENGINE=valkey`
+  explicitly on 2.4.7 (a release where both engines are available), so the
+  validator's "valkey on a both-engines release" path stays covered in CI.
+
+### Changed
+
+- **MySQL dropped from 2.4.6 and 2.4.7 entirely** (Adobe on-prem no longer
+  certifies any MySQL version after MySQL 8.0 EOS, 30 Apr 2026). The wizard
+  auto-picks MariaDB on those releases and explains why; `CONFIG_FILE`
+  validation rejects `DB_ENGINE=mysql` with a clear error.
+- **MySQL 8.0 dropped from 2.4.8, 2.4.9 and every MageOS release** (EOS
+  reached). Only MySQL 8.4 remains on the releases that still offer MySQL.
+- **OpenSearch tightened** to track Adobe's current per-patch table:
+  - 2.4.6: 2.5.0 / 2.12.0 -> 2.19.0 / 3.0.0
+  - 2.4.7: 2.12.0 / 2.19.0 -> 2.19.0 / 3.0.0
+  - 2.4.8: 2.12.0 / 2.19.0 / 3.0.0 -> 2.19.0 / 3.0.0 (drop 2.12)
+  - 2.4.9: 2.19.0 / 3.0.0 -> 3.0.0 only
+- **MariaDB 10.4 dropped from 2.4.6** (Adobe last certified it on
+  2.4.6-p10; current 2.4.6-p15 is 10.11+).
+- **MariaDB 10.6 dropped from 2.4.7** (Adobe 2.4.7-p10 baseline is 10.11+).
+- **PHP 8.2 dropped from MageOS** (MageOS upstream removed it from their
+  matrix in May 2026; 8.3 and 8.4 remain).
+- **Presets updated** to the new matrix:
+  - `magento-latest`: MariaDB 11.4 -> 11.8, Varnish 7.7 -> 8, explicit
+    `CACHE_ENGINE=valkey`, `VALKEY_VERSION=9`. Description string updated.
+  - `magento-legacy`: MariaDB 10.6 -> 10.11, OpenSearch 2.5 -> 2.19,
+    Varnish 7.1 -> 8, explicit `CACHE_ENGINE=redis` (legacy path).
+    Description string updated.
+  - `mageos-latest`: MariaDB 11.4 -> 11.8, explicit `CACHE_ENGINE=valkey`.
+    Description string updated.
+- **Test fixtures updated** to match the new matrix:
+  - `minimal.env`: MariaDB 10.6 -> 10.11, OpenSearch 2.12 -> 2.19, add
+    `CACHE_ENGINE=redis` (exercises Redis path).
+  - `full-stack.env`: add `CACHE_ENGINE=valkey`.
+  - `mageos.env`: add `CACHE_ENGINE=valkey`.
+  - `magento-249.env`: MariaDB 11.4 -> 11.8, deliberately omit
+    `CACHE_ENGINE` to exercise the auto-default path in the validator.
+
+### Removed
+
+- Stale comment in `render-compose.sh` pointing at `valkey/valkey:8-alpine`
+  as a "drop-in" replacement - the renderer now handles Valkey natively, so
+  the comment is obsolete.
+
+### Notes
+
+- **Not yet certified, deliberately deferred**: MariaDB 12.3 (Adobe says
+  "compatibility will be confirmed following the official release of MariaDB
+  12.3, anticipated in the May-June timeframe" - we wait for confirmation);
+  RabbitMQ 4.2 (stack does not ship RabbitMQ at all today); Composer 2.9.3+
+  explicit pin (the `composer:2.9` image already resolves to the current
+  2.9.x).
+- **PHP 8.5 on 2.4.8**: Adobe certifies PHP 8.4 / 8.3 only on 2.4.8 -
+  PHP 8.5 stays exclusive to 2.4.9.
+- **No service rename**: the cache container is still named `redis` in
+  `compose.yaml` even when running Valkey. Renaming would force every
+  existing `env.php` to update - intentional trade-off.
+
 ## [1.1.0] — 2026-05-20
 
 ### Added

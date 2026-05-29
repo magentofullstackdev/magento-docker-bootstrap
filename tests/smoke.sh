@@ -220,7 +220,7 @@ print('services:', sorted(d['services'].keys()))
 }
 
 # ---- run all fixtures ----------------------------------------------------
-for fixture in minimal full-stack mageos magento-249; do
+for fixture in minimal full-stack mageos magento-249 valkey; do
     run_scenario "$fixture" || true
 done
 
