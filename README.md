@@ -18,7 +18,7 @@ This stack runs **any flavor of Magento 2 that shares the same codebase**: Magen
 
 A few practical notes:
 
-- **Magento Open Source / MageOS** — works out of the box, no credentials required (use the MageOS repository for the credential-free path). MageOS publishes its own compatibility matrix at [mage-os.org/get-started/system-requirements/](https://mage-os.org/get-started/system-requirements/); the entries under `MAGEOS_VERSIONS` in `dockerimages/bin/init.sh` track it (MageOS 2.3.0 ≡ Magento 2.4.8-p5; 2.2.x ≡ 2.4.8; 2.0 / 2.1 ≡ 2.4.8-p3).
+- **Magento Open Source / MageOS** — works out of the box, no credentials required (use the MageOS repository for the credential-free path). MageOS publishes its own compatibility matrix at [mage-os.org/get-started/system-requirements/](https://mage-os.org/get-started/system-requirements/); the entries under `MAGEOS_VERSIONS` in `dockerimages/bin/init.sh` track it (MageOS 3.x ≡ Magento 2.4.9, with 3.5.0 the current release; 2.3.0 ≡ 2.4.8-p5 and is the final 2.x; 2.2.x ≡ 2.4.8-p4; 2.0 / 2.1 ≡ 2.4.8-p3).
 - **Adobe Commerce on-premise** — works the same, you just need your Marketplace access keys when running `composer create-project` from `repo.magento.com`.
 - **Adobe Commerce Cloud** — the application code runs identically. What this stack does **not** do is simulate the Cloud-specific deployment lifecycle (`ece-tools`, `magento-cloud-patches`, post-deploy hooks). For day-to-day development on Cloud projects — writing modules, running tests, debugging — this stack is fine. For testing actual Cloud deployments, use Adobe's official `magento-cloud-docker`.
 
@@ -30,8 +30,8 @@ The compatibility matrix in `dockerimages/bin/init.sh` enforces the right combin
 - **Nginx** with self-signed SSL for your local domain, automatic switching between “direct” and “Varnish-fronted” vhosts.
 - **MariaDB or MySQL** — your choice, with version compatibility matched to the Magento release you picked.
 - **OpenSearch** — image automatically matched to the Magento version.
-- **Redis 7**, **MailHog**, **phpMyAdmin** — always on.
-- **Varnish 7** — optional, fully wired with a Magento 2 VCL.
+- **Valkey or Redis**, **MailHog**, **phpMyAdmin** — always on.
+- **Varnish 8** (7.7 on MageOS) — optional, fully wired with a Magento 2 VCL.
 - **Node.js 22** — optional, Vite HMR port exposed.
 
 The stack is designed so the things you do ten times a day take one keystroke and the things you do once never trip you up.
@@ -256,10 +256,11 @@ Run `make presets` for the live list. Currently:
 
 | Preset | Stack |
 |---|---|
-| `magento-latest`  | Magento 2.4.9 + PHP 8.4 + MariaDB 11.8 + OpenSearch 3.0 + Valkey 9 + Varnish 8 |
-| `magento-current` | Magento 2.4.8 + PHP 8.4 + MariaDB 11.8 + OpenSearch 3.0 + Valkey 8.1 + Varnish 7.7 |
+| `magento-latest`  | Magento 2.4.9 + PHP 8.5 + MariaDB 12.3 + OpenSearch 3.9 + Valkey 9 + Varnish 8 |
+| `magento-current` | Magento 2.4.8 + PHP 8.4 + MariaDB 11.8 + OpenSearch 3.9 + Valkey 8.1 + Varnish 8 |
 | `magento-legacy`  | Magento 2.4.6 + PHP 8.2 + MariaDB 10.11 + OpenSearch 2.19 + Redis 7.0 + Varnish 8 |
-| `mageos-latest`   | MageOS 2.3.0 + PHP 8.4 + MariaDB 11.8 + OpenSearch 3.0 + Valkey 8.1 + Varnish 7.7 |
+| `mageos-latest`   | MageOS 3.5.0 (Magento 2.4.9 base) + PHP 8.4 + MariaDB 12.3 + OpenSearch 3.9 + Valkey 8.1 + Varnish 7.7 |
+| `mageos-legacy`   | MageOS 2.3.0 (Magento 2.4.8-p5 base) + PHP 8.4 + MariaDB 11.8 + OpenSearch 3.0 + Valkey 8.1 + Varnish 7.7 |
 
 Presets live in `dockerimages/templates/*.env` and ship without `PROJECT_NAME`, `SITE_HOST` or `USE_NODE` — those are per-project and come from the wizard (or env vars). Each one is exercised by `make test` against the compatibility matrix, so a matrix change without a corresponding preset bump fails CI.
 
@@ -319,21 +320,26 @@ To regenerate `compose.yaml` after editing `.env` by hand, run `make rebuild-con
 
 The initializer enforces these combinations (extend the maps at the top of `dockerimages/bin/init.sh` to add more):
 
-| Magento | PHP | DB | OpenSearch | Redis | Varnish |
+| Release | PHP (recommended) | DB | OpenSearch | Cache | Varnish |
 |---|---|---|---|---|---|
-| 2.4.6 | 8.1, 8.2 | MariaDB 10.4/10.6, MySQL 8.0 | 2.5, 2.12 | 7.0 | 7.1 |
-| 2.4.7 | 8.2, 8.3 | MariaDB 10.6/10.11, MySQL 8.0 | 2.12, 2.19 | 7.2 | 7.4 |
-| 2.4.8 | 8.3, 8.4 | MariaDB 10.6/11.4, MySQL 8.0/8.4 | 2.12, 2.19, 3.0 | 7.4 | 7.6 |
-| 2.4.9 | 8.4, 8.5 | MariaDB 11.4, MySQL 8.4 | 2.19, 3.0 | 7.4 | 7.7 |
-| MageOS 2.3.0 (≡ Magento 2.4.8-p5) | 8.2, 8.3, 8.4 | MariaDB 10.6/10.11/11.4, MySQL 8.0/8.4 | 2.12, 2.19, 3.0 | 7.4 | 7.7 |
-| MageOS 2.2.x (≡ Magento 2.4.8) | 8.2, 8.3, 8.4 | MariaDB 10.6/10.11/11.4, MySQL 8.0/8.4 | 2.12, 2.19, 3.0 | 7.4 | 7.7 |
-| MageOS 2.0 / 2.1 (≡ Magento 2.4.8-p3) | 8.2, 8.3, 8.4 | MariaDB 10.6/10.11/11.4, MySQL 8.0/8.4 | 2.12, 2.19 | 7.4 | 7.6 |
+| Magento 2.4.6 (p15) | 8.1, 8.2 (8.2) | MariaDB 10.11 | 2.19, 3.0, 3.9 | Valkey 8.1, Redis 7.0 (legacy) | 8 |
+| Magento 2.4.7 (p10) | 8.2, 8.3 (8.3) | MariaDB 10.11/11.8 | 2.19, 3.0, 3.9 | Valkey 8.1, Redis 7.2 (legacy) | 8 |
+| Magento 2.4.8 (p5) | 8.3, 8.4 (8.4) | MariaDB 11.4/11.8, MySQL 8.4 | 2.19, 3.0, 3.9 | Valkey 8.1, Redis 7.4 (legacy) | 8 |
+| Magento 2.4.9 | 8.4, 8.5 (8.5) | MariaDB 11.8/12.3, MySQL 8.4 | 3.0, 3.9 | Valkey 9 | 8 |
+| MageOS 3.0.0 to 3.5.0 (≡ Magento 2.4.9) | 8.3, 8.4, 8.5 (8.4) | MariaDB 11.4/11.8/12.3, MySQL 8.4 | 2.19, 3.0, 3.9 | Valkey 8.1, Redis 8.2 | 7.7 |
+| MageOS 2.3.0 (≡ Magento 2.4.8-p5) | 8.3, 8.4 (8.4) | MariaDB 10.6/10.11/11.4/11.8, MySQL 8.4 | 2.19, 3.0 | Valkey 8.1, Redis 7.4 | 7.7 |
+| MageOS 2.2.x (≡ Magento 2.4.8-p4) | 8.3, 8.4 (8.4) | MariaDB 10.6/10.11/11.4/11.8, MySQL 8.4 | 2.19, 3.0 | Valkey 8.1, Redis 7.4 | 7.7 |
+| MageOS 2.0 / 2.1 (≡ Magento 2.4.8-p3) | 8.3, 8.4 (8.4) | MariaDB 10.6/10.11/11.4, MySQL 8.4 | 2.19 | Valkey 8.0, Redis 7.4 | 7.6 |
 
-Redis and Varnish image tags are auto-selected by the configurator from this matrix — you don't get a prompt for them, because picking a mismatched version against a given Magento patch is the kind of subtle breakage we want to make impossible. The selected tags land in `.env` as `REDIS_VERSION` / `VARNISH_VERSION`; override there if your project deliberately runs a different version.
+Each Magento row tracks the current patch level of that release as listed on Adobe's on-prem system-requirements page (checked October 2026). Adobe no longer publishes a new `-pN` composer release between the annual May drop; security fixes arrive as monthly isolated patch zips, so the matrix keys stay the same and only the rows move. MageOS 3.x is the Magento 2.4.9 rebuild and its certified stack did not change between 3.0.0 and 3.5.0; MageOS patches only the latest branch, so 2.x and 3.0 through 3.4 are kept purely for projects pinned to them.
 
-> **2.4.9 dropped a lot of legacy versions.** PHP 8.3 is upgrade-only (not allowed for fresh installs), MySQL 8.0 and MariaDB 10.6 are gone, and OpenSearch 3.x is the officially supported search engine. OpenSearch 2.19 is kept here as a migration path for projects coming from 2.4.8.
+Cache and Varnish image tags are auto-selected by the configurator from this matrix — you don't get a prompt for them, because picking a mismatched version against a given Magento patch is the kind of subtle breakage we want to make impossible. The selected tags land in `.env` as `REDIS_VERSION` / `VALKEY_VERSION` / `VARNISH_VERSION`; override there if your project deliberately runs a different version. OpenSearch is listed by Adobe as a major version only, so each row offers the first 3.x tag and the current latest minor (3.9.0); pick the latest for new projects.
 
-Always confirm against the Adobe system-requirements page for the exact patch release before going live with these picks. OpenSearch images come from the official `opensearchproject/opensearch` registry on Docker Hub (not Adobe's `magento-cloud-docker-opensearch`, which has historically been irregular about publishing tags for newer OpenSearch releases). Required Magento plugins (`analysis-icu`, `analysis-phonetic`) are installed automatically on first start via the `OPENSEARCH_PLUGINS` env var.
+> **2.4.9 dropped a lot of legacy versions.** PHP 8.5 is the only certified runtime (8.4 is upgrade-only, 8.2 / 8.3 are gone), MySQL 8.0 and MariaDB 10.x / 11.4 are out, Redis is not certified at all (Valkey 9 only), and OpenSearch 3.x is the only supported search engine.
+
+> **2.4.6 is in extended support** (regular support ended 11 Aug 2026). It stays in the matrix for projects that cannot move yet. The `php:8.1` Docker image is frozen at 8.1.34 and receives no security fixes; prefer PHP 8.2 on 2.4.6. The php-fpm image automatically pins n98-magerun2 9.5.1 on PHP 8.1 because n98 10.x needs PHP 8.2+ (override with `N98_VERSION` in `.env`).
+
+Always confirm against the Adobe system-requirements page for the exact patch release before going live with these picks. OpenSearch images come from the official `opensearchproject/opensearch` registry on Docker Hub (not Adobe's `magento-cloud-docker-opensearch`, which has historically been irregular about publishing tags for newer OpenSearch releases). The required Magento plugins (`analysis-icu`, `analysis-phonetic`) are baked in by a thin build layer in `dockerimages/config/opensearch/Dockerfile` on top of the official image (the official image has no env hook for plugin installation), so the first `make up` / `make rebuild` builds a local `<project>-opensearch:<version>` image.
 
 To see what OpenSearch versions are currently available on Docker Hub before extending the matrix, run `make check-images`.
 

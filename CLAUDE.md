@@ -85,11 +85,12 @@ make stop && make up
 
 Edit `.env`:
 - `MAGENTO_VERSION=2.4.9` (must be in the matrix — see `MAGENTO_VERSIONS` in `dockerimages/bin/init.sh`)
-- For MageOS, valid `MAGENTO_VERSION` values follow 2.x semantic versioning — currently `2.3.0`, `2.2.2`, `2.2.1`, `2.2.0`, `2.1.0`, `2.0.0` (see `MAGEOS_VERSIONS`). 2.3.0 tracks Magento 2.4.8-p5 (final 2.x release before MageOS 3.0); the 2.2.x line tracks 2.4.8; 2.0 / 2.1 track 2.4.8-p3.
-- `PHP_VERSION=8.4` (must be allowed for that Magento release)
-- `OPENSEARCH_VERSION=3.0.0` (must be allowed for that Magento release)
+- For MageOS, valid `MAGENTO_VERSION` values are the MageOS release numbers (see `MAGEOS_VERSIONS`): `3.5.0` down to `3.0.0` (all rebuilt on Magento 2.4.9, one shared spec; 3.5.0 is the only upstream-supported one), `2.3.0` (final 2.x, tracks 2.4.8-p5), `2.2.x` (2.4.8-p4), `2.1.0` / `2.0.0` (2.4.8-p3).
+- `PHP_VERSION=8.5` (must be allowed for that Magento release; 2.4.9 certifies 8.5 only, 8.4 is upgrade-only)
+- `OPENSEARCH_VERSION=3.9.0` (must be allowed for that Magento release; Adobe recommends the latest 3.x minor)
+- `N98_VERSION=auto` (n98-magerun2 release baked into php-fpm; `auto` pins 9.5.1 on PHP 8.1 because n98 10.x needs PHP 8.2+, latest elsewhere)
 - `CACHE_ENGINE=valkey` (Adobe default since 2.4.6-p11). Use `redis` only for legacy patches; 2.4.9 forces Valkey (Adobe dropped Redis). The Docker service name stays `redis` in both cases so existing `app/etc/env.php` keeps working.
-- `DB_ENGINE=mariadb` — MySQL was dropped from Adobe's certified matrix on 2.4.6 / 2.4.7 after the MySQL 8.0 EOS (30 Apr 2026); 2.4.8 and 2.4.9 keep MySQL 8.4 only. The wizard auto-skips the question on releases where MySQL is unavailable.
+- `DB_ENGINE=mariadb` — MySQL was dropped from Adobe's certified matrix on 2.4.6 / 2.4.7 after the MySQL 8.0 EOS (30 Apr 2026); 2.4.8 and 2.4.9 keep MySQL 8.4 only. The wizard auto-skips the question on releases where MySQL is unavailable. 2.4.9 on-prem lists MariaDB 12.3 (11.8 kept from the Cloud table).
 
 Then:
 
@@ -128,7 +129,7 @@ For each of these, ask explicitly: "This will [destroy X]. Are you sure?"
 
 The repo has its own smoke test harness for the bootstrap itself (not for the user's Magento code):
 
-- `make test` — fast: runs `tests/smoke.sh`, which renders `compose.yaml` from each fixture in `tests/fixtures/` (`minimal.env`, `full-stack.env`, `mageos.env`, `magento-249.env`) and validates the YAML. Requires `pyyaml`. Takes seconds.
+- `make test` — fast: runs `tests/smoke.sh`, which renders `compose.yaml` from each fixture in `tests/fixtures/` (`minimal.env`, `full-stack.env`, `mageos.env`, `mageos-3.env`, `magento-249.env`, `valkey.env`) and validates the YAML. Requires `pyyaml`. Takes seconds.
 - `make test-full` — `make test` plus actually `docker compose up`-ing each fixture and curl-ing the stack. Takes minutes; needs Docker. CI runs this on `main` pushes only.
 
 CI (`.github/workflows/smoke.yml`) runs three jobs on every push/PR:
@@ -148,7 +149,8 @@ If you edit any bash script, run `shellcheck` locally before reporting the chang
 | `db_dumps/` | DB import/export location | When importing a dump. |
 | `dockerimages/config/php-fpm/users/.bashrc` | Aliases mounted live into the container | When adding/changing aliases. No rebuild needed. |
 | `dockerimages/config/php-fpm/users/.bash_history` | Persistent shell history. | Don't edit — it grows naturally. |
-| `dockerimages/bin/init.sh` | Configurator (compatibility matrix `MAGENTO_VERSIONS` + `MAGEOS_VERSIONS` lives here; MageOS tracks Magento upstream with its own 2.x semantic versioning) | Only for adding new Magento / MageOS versions. |
+| `dockerimages/bin/init.sh` | Configurator (compatibility matrix `MAGENTO_VERSIONS` + `MAGEOS_VERSIONS` lives here; MageOS 3.x tracks Magento 2.4.9, 2.x tracks 2.4.8) | Only for adding new Magento / MageOS versions. Adobe ships no new `-pN` between annual May drops, so Magento keys change rarely; MageOS adds a release every month or two. |
+| `dockerimages/config/opensearch/Dockerfile` | Thin layer over the official OpenSearch image that installs `analysis-icu` / `analysis-phonetic` (the official image has no env hook for plugins). | Only if Magento's required plugin list changes. |
 | `dockerimages/templates/*.env` | Curated stack presets surfaced by `make presets` / `make configure PRESET=…` | When adding a new shipped preset, or after a matrix change that invalidates an existing preset. `tests/smoke.sh` re-validates every preset against the matrix on each run. |
 
 ## Useful diagnostic commands

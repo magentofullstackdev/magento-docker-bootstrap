@@ -27,7 +27,8 @@ CACHE_ENGINE="${CACHE_ENGINE:-valkey}"
 REDIS_VERSION="${REDIS_VERSION:-7.4}"
 VALKEY_VERSION="${VALKEY_VERSION:-8.1}"
 VARNISH_VERSION="${VARNISH_VERSION:-7.7}"
-export CACHE_ENGINE REDIS_VERSION VALKEY_VERSION VARNISH_VERSION
+N98_VERSION="${N98_VERSION:-auto}"
+export CACHE_ENGINE REDIS_VERSION VALKEY_VERSION VARNISH_VERSION N98_VERSION
 
 # Container IP plan (linux only). On mac we use service-name DNS.
 # All IPs are 10.10.<DOCKER_SUBNET_BASE>.<last-octet>; only the last octet
@@ -217,6 +218,7 @@ cat <<EOF
       context: ./dockerimages/config/php-fpm
       args:
         PHP_VERSION: "${PHP_VERSION}"
+        N98_VERSION: "${N98_VERSION}"
     volumes:
       - ./httpdocs:/var/www/html
       - ./dockerimages/config/php-fpm/config/php-fpm.conf:/usr/local/etc/php-fpm.conf
@@ -251,7 +253,13 @@ render_network php-fpm PHP_IP
 cat <<EOF
 
   opensearch:
-    image: opensearchproject/opensearch:${OPENSEARCH_VERSION}
+    # Official image + the analysis-icu / analysis-phonetic plugins Magento
+    # requires, baked in at build time (see dockerimages/config/opensearch).
+    build:
+      context: ./dockerimages/config/opensearch
+      args:
+        OPENSEARCH_VERSION: "${OPENSEARCH_VERSION}"
+    image: '${PROJECT_NAME}-opensearch:${OPENSEARCH_VERSION}'
     # OpenSearch's clean-shutdown takes ~30s by default. For a dev stack we
     # don't care about index integrity — kill it after 5s.
     stop_grace_period: 5s
@@ -267,10 +275,6 @@ cat <<EOF
       # SSL certs, no admin password, no demo config installed.
       - DISABLE_SECURITY_PLUGIN=true
       - DISABLE_INSTALL_DEMO_CONFIG=true
-      # Plugins required by Magento for unicode tokenisation + phonetic
-      # search. The official image installs them on first start when this
-      # env var is set.
-      - OPENSEARCH_PLUGINS=analysis-icu,analysis-phonetic
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
 EOF
 render_network opensearch OPENSEARCH_IP

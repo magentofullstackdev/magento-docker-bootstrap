@@ -143,43 +143,70 @@ pick_subnet() {
 # a pre-Valkey patch level (e.g. 2.4.6 baseline through 2.4.6-p10) - users
 # can switch back via CACHE_ENGINE=redis in .env.
 # ------------------------------------------------------------------------
-# OpenSearch / Varnish ranges follow Adobe's per-patch tables:
+# OpenSearch / Varnish ranges follow Adobe's per-patch tables (checked
+# against the on-prem system-requirements page on 2026-10-05):
 #   - 2.4.6-p15: OS 2.19/3, Varnish 8
 #   - 2.4.7-p10: OS 2.19/3, Varnish 8
-#   - 2.4.8-p5:  OS 3,      Varnish 7.7 (Adobe deliberately did not bump
-#                                        2.4.8 to Varnish 8 - VCL quirk)
+#   - 2.4.8-p5:  OS 3,      Varnish 8 (2.19 kept here for p4 and earlier)
 #   - 2.4.9:     OS 3 only, Varnish 8
-# We standardise on OpenSearch 2.x+ so the official image installs the
-# analysis-icu / analysis-phonetic plugins via OPENSEARCH_PLUGINS env var.
+# Adobe lists OpenSearch by major version only and recommends "the latest
+# minor release", so each entry offers the first 3.x tag (3.0.0, kept so
+# existing .env files keep validating) and the current latest (3.9.0).
+# The analysis-icu / analysis-phonetic plugins Magento needs are baked in
+# by dockerimages/config/opensearch/Dockerfile (build layer over the
+# official image, version taken from OPENSEARCH_VERSION).
+# ------------------------------------------------------------------------
+# Adobe no longer ships a -pN composer release between the annual May drop:
+# since mid-2026 security fixes arrive as monthly isolated patch zips on top
+# of the latest -pN. The matrix keys therefore stay 2.4.6 .. 2.4.9 and each
+# row tracks the current -pN table (2.4.6-p15, 2.4.7-p10, 2.4.8-p5, 2.4.9).
 # ------------------------------------------------------------------------
 # 2.4.9 (released 12 May 2026) significantly tightens supported versions:
-# PHP 8.4/8.5 only (8.3 upgrade-only, 8.2 dropped), MariaDB 11.4 / 11.8,
-# MySQL 8.4 only, OpenSearch 3.x only, Valkey 9 only (no Redis).
+# PHP 8.5 certified, 8.4 upgrade-only (8.2 / 8.3 dropped), MariaDB 12.3 on
+# the on-prem table (11.8 still on the Cloud table, kept here), MySQL 8.4
+# only, OpenSearch 3.x only, Valkey 9 only (no Redis).
+# ------------------------------------------------------------------------
+# 2.4.6 left regular support on 11 Aug 2026 (extended support to 31 Aug
+# 2027). It stays for projects that cannot move yet. Note the php:8.1
+# Docker image is frozen at 8.1.34 (PHP 8.1 is EOL) and n98-magerun2 10.x
+# needs PHP 8.2+, so the php-fpm Dockerfile pins n98 9.5.1 on PHP 8.1.
 declare -A MAGENTO_VERSIONS=(
-    [2.4.6]="php=8.1 8.2|recommended=8.2|mariadb=10.11 11.8|opensearch=2.19.0 3.0.0|opensearch_recommended=2.19.0|composer=2|redis=7.0|valkey=8.1|valkey_recommended=8.1|varnish=8"
-    [2.4.7]="php=8.2 8.3|recommended=8.3|mariadb=10.11 11.8|opensearch=2.19.0 3.0.0|opensearch_recommended=2.19.0|composer=2|redis=7.2|valkey=8.1|valkey_recommended=8.1|varnish=8"
-    [2.4.8]="php=8.3 8.4|recommended=8.4|mariadb=10.6 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
-    [2.4.9]="php=8.4 8.5|recommended=8.4|mariadb=11.4 11.8|mysql=8.4|opensearch=3.0.0|opensearch_recommended=3.0.0|composer=2|valkey=9|valkey_recommended=9|varnish=8"
+    [2.4.6]="php=8.1 8.2|recommended=8.2|mariadb=10.11|opensearch=2.19.6 3.0.0 3.9.0|opensearch_recommended=2.19.6|composer=2|redis=7.0|valkey=8.1|valkey_recommended=8.1|varnish=8"
+    [2.4.7]="php=8.2 8.3|recommended=8.3|mariadb=10.11 11.8|opensearch=2.19.6 3.0.0 3.9.0|opensearch_recommended=2.19.6|composer=2|redis=7.2|valkey=8.1|valkey_recommended=8.1|varnish=8"
+    [2.4.8]="php=8.3 8.4|recommended=8.4|mariadb=11.4 11.8|mysql=8.4|opensearch=2.19.6 3.0.0 3.9.0|opensearch_recommended=3.9.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=8"
+    [2.4.9]="php=8.4 8.5|recommended=8.5|mariadb=11.8 12.3|mysql=8.4|opensearch=3.0.0 3.9.0|opensearch_recommended=3.9.0|composer=2|valkey=9|valkey_recommended=9|varnish=8"
 )
 
 # MageOS is API-compatible with Magento Open Source - same matrix shape.
-# MageOS versions track Magento upstream: 2.3.0 is the rebuild of the
-# Magento 2.4.8-p5 codebase (final 2.x release before MageOS 3.0 / Magento
-# 2.4.9); the 2.2.x line tracks 2.4.8, and 2.1 / 2.0 track 2.4.8-p3.
+# MageOS versions track Magento upstream:
+#   - 3.x (3.0.0 .. 3.5.0, May-Sep 2026) is the rebuild of Magento 2.4.9.
+#     3.1.0+ fold in Adobe's monthly isolated patches; 3.5.0 carries the
+#     APSB26-146 hotfix. The certified stack did not change between 3.0.0
+#     and 3.5.0, so every 3.x key shares one spec.
+#   - 2.3.0 is the final 2.x release (Magento 2.4.8-p5); the 2.2.x line
+#     tracks 2.4.8-p4, and 2.1 / 2.0 track 2.4.8-p3.
+# MageOS patches only the latest branch, so everything below 3.5.0 is
+# upstream-unsupported; the rows stay for projects pinned to them.
 # The compatibility matrix below mirrors the official MageOS one at
-# https://mage-os.org/get-started/system-requirements/. MageOS upstream
-# moves more slowly than Adobe: Varnish 7.7 stays (no Varnish 8 yet),
-# Valkey 8.0 baseline (8.1 on the newer 2.2.x / 2.3.0 because they track
-# 2.4.8-p5 which Adobe certifies on Valkey 8.1), PHP 8.3-8.4 only (8.2
-# dropped from MageOS docs as of May 2026), MySQL 8.4 only (8.0 dropped
-# after Apr 2026 EOS).
+# https://mage-os.org/get-started/system-requirements/ (3.x: PHP 8.3-8.5
+# with upstream CI on 8.4, MariaDB 11.4+ with 12.3 recommended, MySQL 8.4,
+# OpenSearch 2/3 with 3 recommended, Valkey 8 recommended with Redis 7.2+
+# still allowed, Varnish 7.7, Composer 2.10.2). Varnish stays 7.7 across
+# MageOS (upstream has not certified 8). The 2.x rows keep PHP 8.3-8.4 (8.2
+# dropped from the MageOS docs in May 2026) and MySQL 8.4 only.
 declare -A MAGEOS_VERSIONS=(
-    [2.3.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
-    [2.2.2]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
-    [2.2.1]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
-    [2.2.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.0 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
-    [2.1.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4|mysql=8.4|opensearch=2.19.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|valkey=8.0|valkey_recommended=8.0|varnish=7.6"
-    [2.0.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4|mysql=8.4|opensearch=2.19.0|opensearch_recommended=2.19.0|composer=2|redis=7.4|valkey=8.0|valkey_recommended=8.0|varnish=7.6"
+    [3.5.0]="php=8.3 8.4 8.5|recommended=8.4|mariadb=11.4 11.8 12.3|mysql=8.4|opensearch=2.19.6 3.0.0 3.9.0|opensearch_recommended=3.9.0|composer=2|redis=8.2|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [3.4.0]="php=8.3 8.4 8.5|recommended=8.4|mariadb=11.4 11.8 12.3|mysql=8.4|opensearch=2.19.6 3.0.0 3.9.0|opensearch_recommended=3.9.0|composer=2|redis=8.2|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [3.3.0]="php=8.3 8.4 8.5|recommended=8.4|mariadb=11.4 11.8 12.3|mysql=8.4|opensearch=2.19.6 3.0.0 3.9.0|opensearch_recommended=3.9.0|composer=2|redis=8.2|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [3.2.0]="php=8.3 8.4 8.5|recommended=8.4|mariadb=11.4 11.8 12.3|mysql=8.4|opensearch=2.19.6 3.0.0 3.9.0|opensearch_recommended=3.9.0|composer=2|redis=8.2|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [3.1.0]="php=8.3 8.4 8.5|recommended=8.4|mariadb=11.4 11.8 12.3|mysql=8.4|opensearch=2.19.6 3.0.0 3.9.0|opensearch_recommended=3.9.0|composer=2|redis=8.2|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [3.0.0]="php=8.3 8.4 8.5|recommended=8.4|mariadb=11.4 11.8 12.3|mysql=8.4|opensearch=2.19.6 3.0.0 3.9.0|opensearch_recommended=3.9.0|composer=2|redis=8.2|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.3.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.6 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.2.2]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.6 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.2.1]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.6 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.2.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4 11.8|mysql=8.4|opensearch=2.19.6 3.0.0|opensearch_recommended=3.0.0|composer=2|redis=7.4|valkey=8.1|valkey_recommended=8.1|varnish=7.7"
+    [2.1.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4|mysql=8.4|opensearch=2.19.6|opensearch_recommended=2.19.6|composer=2|redis=7.4|valkey=8.0|valkey_recommended=8.0|varnish=7.6"
+    [2.0.0]="php=8.3 8.4|recommended=8.4|mariadb=10.6 10.11 11.4|mysql=8.4|opensearch=2.19.6|opensearch_recommended=2.19.6|composer=2|redis=7.4|valkey=8.0|valkey_recommended=8.0|varnish=7.6"
 )
 
 # Helper: parse "k1=v1|k2=v2" into associative array `OUT`
@@ -611,11 +638,10 @@ OS_RECOMMENDED="${SPEC[opensearch_recommended]}"
 echo
 say "OpenSearch versions compatible with ${FLAVOUR} ${MAGENTO_VERSION}: ${OS_OPTS[*]}  (recommended: ${OS_RECOMMENDED})"
 # MageOS-specific hint: the official matrix marks OpenSearch 3 as the
-# preferred engine for new MageOS 2.2.x installations; the matrix above
-# keeps 2.19 as the recommended default to ease migrations from existing
-# 2.1.x / 2.0.x setups. If we offer 3.0.0 for this MageOS release, surface
-# the "fresh-install" advice so the user can make an informed choice.
-if [[ "$FLAVOUR_KEY" == "mageos" ]] && [[ " ${OS_OPTS[*]} " == *" 3.0.0 "* ]]; then
+# preferred engine for new installations (2.2.x onwards). If we offer any
+# 3.x tag for this MageOS release, surface the "fresh-install" advice so
+# the user can make an informed choice.
+if [[ "$FLAVOUR_KEY" == "mageos" ]] && [[ " ${OS_OPTS[*]} " == *" 3."* ]]; then
     say "MageOS recommends OpenSearch 3 for new installations (https://mage-os.org/get-started/system-requirements/)."
 fi
 OPENSEARCH_VERSION=$(choose "Pick an OpenSearch version" "${OS_OPTS[@]}")
@@ -718,6 +744,11 @@ CACHE_ENGINE=${CACHE_ENGINE}
 REDIS_VERSION=${REDIS_VERSION}
 VALKEY_VERSION=${VALKEY_VERSION}
 VARNISH_VERSION=${VARNISH_VERSION}
+
+# n98-magerun2 release baked into the php-fpm image. "auto" picks the latest
+# phar, except on PHP 8.1 where it pins 9.5.1 (n98 10.x requires PHP 8.2+).
+# Set an explicit version (e.g. 9.5.1) to pin, then rebuild php-fpm.
+N98_VERSION=${N98_VERSION:-auto}
 
 USE_VARNISH=${USE_VARNISH}
 USE_NODE=${USE_NODE}

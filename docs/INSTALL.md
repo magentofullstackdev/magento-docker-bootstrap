@@ -90,6 +90,8 @@ composer create-project --repository-url=https://repo.mage-os.org/ \
 exit
 ```
 
+> Without a version constraint Composer resolves the newest MageOS release (3.5.0 at the time of writing, built on Magento 2.4.9). MageOS only patches its latest branch, so that is the version you want for a new project. Append `:2.3.0` to the package name only if you need the final Magento 2.4.8-based line, and pick the matching `MAGENTO_VERSION` in `make configure` either way. Note that Adobe now ships monthly isolated security patches instead of new `-pN` releases; MageOS 3.1.0+ bundles them for you.
+
 The `.` at the end installs straight into `/var/www/html`.
 
 Back on the host:

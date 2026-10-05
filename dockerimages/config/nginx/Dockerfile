@@ -1,4 +1,4 @@
-FROM nginx:1.28-alpine
+FROM nginx:1.30-alpine
 
 LABEL org.opencontainers.image.authors="Sergiu Ro. <sergiu.ro@magentofullstack.dev>"
 LABEL org.opencontainers.image.source="https://magentofullstack.dev"

@@ -1,13 +1,16 @@
 # =====================================================================
 # PHP-FPM image for Magento / MageOS development.
-# Version chosen at build time via PHP_VERSION ARG (default 8.3).
+# Version chosen at build time via PHP_VERSION ARG (default 8.4).
 # Includes: composer 2, n98-magerun2, xdebug 3, mhsendmail, ImageMagick,
 # bash-completion for n98 + m2install, sudoers for www-data.
 # =====================================================================
-ARG PHP_VERSION=8.3
+ARG PHP_VERSION=8.4
 FROM php:${PHP_VERSION}-fpm-bookworm
 # Re-declared so ${PHP_VERSION} is readable inside RUN steps.
 ARG PHP_VERSION
+# n98-magerun2 release to bake in. "auto" = latest phar, except on PHP 8.1
+# where n98 10.x no longer runs (requires PHP 8.2+) and 9.5.1 is used.
+ARG N98_VERSION=auto
 
 LABEL org.opencontainers.image.authors="Sergiu Ro. <sergiu.ro@magentofullstack.dev>"
 LABEL org.opencontainers.image.source="https://magentofullstack.dev"
@@ -70,8 +73,9 @@ RUN if dpkg --compare-versions "${PHP_VERSION}" lt "8.5"; then \
 # ---------------------------------------------------------------------
 # 4. PECL extensions
 # ---------------------------------------------------------------------
-# Note: imagick on PHP 8.3+ requires the github master tarball until a
-# stable PECL release lands; we fall back gracefully if pecl install fails.
+# Note: imagick 3.8.1+ (PECL, Nov 2025) builds on PHP 8.3 through 8.5. The
+# github master tarball fallback stays as a safety net for the next PHP
+# release that outruns PECL.
 # `redis` (phpredis) is optional for Magento — without it Magento falls
 # back to Predis (pure PHP) — but the C extension is significantly faster
 # and is what production stacks usually run, so we install it for parity.
@@ -93,12 +97,21 @@ RUN pecl channel-update pecl.php.net \
 # ---------------------------------------------------------------------
 # 6. Composer 2 + n98-magerun2 + mhsendmail
 # ---------------------------------------------------------------------
-# Pin Composer to 2.9 — MageOS requires 2.7+ and recommends 2.9.3+.
-COPY --from=composer:2.9 /usr/bin/composer /usr/local/bin/composer
+# Pin Composer to 2.10 - Adobe's current table lists 2.10 on every 2.4.x
+# line (2.2.26+ on 2.4.6) and MageOS 3.x certifies 2.10.2.
+COPY --from=composer:2.10 /usr/bin/composer /usr/local/bin/composer
 
-RUN curl -sS -L -o /usr/local/bin/n98-magerun2.phar \
-        https://files.magerun.net/n98-magerun2-latest.phar \
-    && chmod +x /usr/local/bin/n98-magerun2.phar
+# n98-magerun2: 10.x (Aug 2026) requires PHP 8.2+, so PHP 8.1 builds get
+# the last 9.x release. Any explicit N98_VERSION wins over the auto rule.
+RUN set -eux; \
+    n98="${N98_VERSION}"; \
+    if [ "$n98" = "auto" ]; then \
+        if dpkg --compare-versions "${PHP_VERSION}" lt "8.2"; then n98="9.5.1"; else n98="latest"; fi; \
+    fi; \
+    curl -sS -L -o /usr/local/bin/n98-magerun2.phar \
+        "https://files.magerun.net/n98-magerun2-${n98}.phar"; \
+    chmod +x /usr/local/bin/n98-magerun2.phar; \
+    php /usr/local/bin/n98-magerun2.phar --version
 
 RUN curl -sSL -o /usr/local/bin/mhsendmail \
         https://github.com/mailhog/mhsendmail/releases/download/v0.2.0/mhsendmail_linux_amd64 \

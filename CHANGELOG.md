@@ -5,6 +5,89 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-10-05
+
+Tracks the Adobe and MageOS releases between June and October 2026: the
+MageOS 3.x line (Magento 2.4.9 rebuild), PHP 8.5 as Adobe's certified
+runtime on 2.4.9, MariaDB 12.3, OpenSearch 3.9, Composer 2.10. Backward
+compatibility is kept down to Magento 2.4.6 / MageOS 2.0.
+
+### Added
+
+- **MageOS 3.x in the matrix**: `3.0.0`, `3.1.0`, `3.2.0`, `3.3.0`, `3.4.0`
+  and `3.5.0` (all rebuilt on Magento 2.4.9; the certified stack did not
+  change between them, so they share one spec: PHP 8.3 / 8.4 / 8.5 with 8.4
+  recommended, MariaDB 11.4 / 11.8 / 12.3, MySQL 8.4, OpenSearch 2.19 / 3.0
+  / 3.9, Valkey 8.1 recommended with Redis 8.2 still selectable, Varnish
+  7.7). 3.5.0 (8 Sep 2026) bundles Adobe's 2026 isolated security patches
+  including the APSB26-146 hotfix. MageOS patches only its latest branch.
+- **OpenSearch 3.9.0** (current latest minor) offered on every release that
+  allows OpenSearch 3; it is the recommended default on 2.4.8, 2.4.9 and
+  MageOS 3.x. Adobe lists OpenSearch by major version only and recommends
+  the latest minor. 3.0.0 stays selectable so existing `.env` files keep
+  validating.
+- **MariaDB 12.3** on 2.4.9 (Adobe's on-prem table now lists 12.3 only;
+  11.8 kept from the Cloud table) and MageOS 3.x (recommended there).
+- **PHP 8.5 is the recommended version on 2.4.9** (Adobe certifies 8.5
+  only; 8.4 is upgrade-only). The php-fpm image already handled the
+  built-in OPcache on 8.5; every PECL extension in the image (xdebug 3.5,
+  imagick 3.8.1, phpredis 6.3, igbinary, msgpack, mailparse, oauth, yaml)
+  now has an 8.5-capable release.
+- **`N98_VERSION` variable** (`.env`, compose build arg, Dockerfile ARG).
+  `auto` (the default) downloads the latest n98-magerun2 phar except on PHP
+  8.1, where it pins 9.5.1 because n98 10.x (Aug 2026) requires PHP 8.2+.
+  Set an explicit version to pin. The build now runs `n98-magerun2 --version`
+  so an incompatible phar fails the image build instead of the first shell.
+- **New preset `mageos-legacy`**: MageOS 2.3.0 (final 2.x, Magento 2.4.8-p5
+  base) + PHP 8.4 + MariaDB 11.8 + OpenSearch 3.0 + Valkey 8.1 + Varnish 7.7.
+- **New fixture `tests/fixtures/mageos-3.env`**: MageOS 3.5.0 on PHP 8.5 /
+  MariaDB 12.3 / OpenSearch 3.9.0, so the 3.x matrix row and the PHP 8.5
+  image build are covered by `make test` / `make test-full`.
+
+### Fixed
+
+- **OpenSearch plugins were never installed.** `compose.yaml` passed an
+  `OPENSEARCH_PLUGINS=analysis-icu,analysis-phonetic` env var, but the
+  official `opensearchproject/opensearch` image has no such hook, so every
+  stack so far ran without the two plugins Magento requires. The service
+  is now built from `dockerimages/config/opensearch/Dockerfile`, a thin
+  layer over the official image that runs `opensearch-plugin install` at
+  build time (verified on 2.19.6 and 3.9.0). Existing projects pick it up
+  on the next `make rebuild-config && make rebuild` (or
+  `docker compose build opensearch`).
+
+### Changed
+
+- **Varnish 8 on 2.4.8** (was 7.7). Adobe's current 2.4.8-p5 column lists
+  Varnish 8 like every other current patch line; 7.7 only appears on the
+  previous patches.
+- **MariaDB 10.6 dropped from 2.4.8** (Adobe 2.4.8-p5 lists 11.4 / 11.8).
+- **MariaDB 11.4 dropped from 2.4.9, 11.8 dropped from 2.4.6** (tracking
+  the current Adobe columns: 2.4.9 = 12.3 / 11.8, 2.4.6-p15 = 10.11).
+- **OpenSearch 2.19.0 replaced by 2.19.6** everywhere (latest 2.19.x).
+- **Composer image 2.9 -> 2.10** (Adobe lists 2.10 on every 2.4.x line,
+  MageOS 3.x certifies 2.10.2). Default `PHP_VERSION` build ARG 8.3 -> 8.4.
+- **nginx 1.28 -> 1.30** (Adobe's current table).
+- **Presets refreshed**: `magento-latest` = 2.4.9 + PHP 8.5 + MariaDB 12.3 +
+  OpenSearch 3.9; `magento-current` = 2.4.8 + OpenSearch 3.9 + Varnish 8;
+  `magento-legacy` = 2.4.6 + OpenSearch 2.19.6 (unchanged otherwise);
+  `mageos-latest` = MageOS 3.5.0 + PHP 8.4 + MariaDB 12.3 + OpenSearch 3.9.
+- **Fixtures refreshed**: `magento-249.env` on PHP 8.5 / MariaDB 12.3 /
+  OpenSearch 3.9.0; `minimal.env` and `full-stack.env` on OpenSearch 2.19.6.
+- **Matrix comments and README table rewritten** to the current Adobe
+  per-patch columns (the README table still described the pre-1.2.0 matrix).
+  Documents Adobe's new cadence: one `-pN` composer release per year in May
+  plus monthly isolated patch zips, so the Magento matrix keys stay put and
+  only the rows move.
+
+### Notes
+
+- 2.4.6 left regular support on 11 Aug 2026 (extended support to 31 Aug
+  2027). It stays in the matrix; the `php:8.1` image is frozen at 8.1.34
+  (PHP 8.1 is EOL), so prefer PHP 8.2 there.
+- Adobe Commerce 2.4.10-alpha is scheduled for 13 Oct 2026 with no published
+  requirements yet; it is not in the matrix.
+
 ## [1.2.0] — 2026-05-29
 
 Tracks Adobe's May 2026 system-requirements refresh: Valkey replaces Redis
