@@ -88,7 +88,12 @@ assert 'db' in d['services'], 'no db service'
 assert 'php-fpm' in d['services'], 'no php-fpm service'
 assert 'web' in d['services'], 'no web service'
 assert 'opensearch' in d['services'], 'no opensearch service'
-print('services:', sorted(d['services'].keys()))
+env = dict(l.rstrip().split('=', 1) for l in open('.env') if '=' in l and not l.startswith('#'))
+for svc in ('php-fpm', 'web'):
+    args = d['services'][svc]['build']['args']
+    assert str(args['USER_UID']) == env['HOST_UID'], f'{svc} USER_UID != HOST_UID'
+    assert str(args['USER_GID']) == env['HOST_GID'], f'{svc} USER_GID != HOST_GID'
+print('services:', sorted(d['services'].keys()), 'ids:', env['HOST_UID'] + ':' + env['HOST_GID'])
 " > /tmp/smoke-yaml.log 2>&1; then
             pass "compose.yaml structurally valid ($(grep services: /tmp/smoke-yaml.log | head -1))"
         else

@@ -316,6 +316,16 @@ To regenerate `compose.yaml` after editing `.env` by hand, run `make rebuild-con
         └── varnish/             # default.vcl
 ```
 
+## File permissions (host user mapping)
+
+`make configure` records your host user and group ids in `.env` as `HOST_UID` / `HOST_GID`. When the images build, `www-data` (php-fpm), the `nginx` worker user (web) and `node` (nodejs) are remapped to those ids. Everything PHP, nginx or npm writes into `httpdocs/` therefore belongs to you on the host, and everything you edit on the host is writable inside the container, on Linux, macOS and WSL alike. No `chown` juggling, no world-writable directories.
+
+- The ids are captured from the user running `make configure`. Override with `HOST_UID=... HOST_GID=... make configure` (CI, shared machines).
+- Fallback to `1000:1000` when configuring as root or on a native Windows host (NTFS bind mounts ignore uids).
+- macOS ids such as `501:20` are fine: the images use non-unique ids, so gid 20 colliding with Debian's `dialout` group is harmless (you may see `dialout` as the group name in `ls -l` inside the container; it is still your gid).
+- Changing the ids later: edit `.env`, then `make rebuild-config && docker compose build php-fpm web nodejs && make stop && make up`.
+- Older `.env` files without these keys keep the historic `1000:1000`. Re-run `make configure` (or add the two lines) to adopt your real ids. If the container previously wrote files as `1000` on a non-1000 host, fix them once on the host: `sudo chown -R $(id -u):$(id -g) httpdocs`.
+
 ## Compatibility matrix
 
 The initializer enforces these combinations (extend the maps at the top of `dockerimages/bin/init.sh` to add more):

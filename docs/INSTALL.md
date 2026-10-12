@@ -40,7 +40,7 @@ composer create-project --repository-url=https://repo.magento.com/ \
     magento/project-enterprise-edition .
 ```
 
-The `.` at the end installs straight into `/var/www/html`.
+The `.` at the end installs straight into `/var/www/html`. Files land owned by your host user: `www-data` inside the container carries your `HOST_UID` / `HOST_GID` from `.env`, so you can edit them from the host or the container alike.
 
 Composer will ask for your **public key** and **private key** — these come from your account at [https://commercemarketplace.adobe.com](https://commercemarketplace.adobe.com/customer/accessKeys/) (free signup, then go to *My Profile -> Marketplace -> Access Keys -> Create A New Access Key*). The public key is your username, the private key is your password.
 

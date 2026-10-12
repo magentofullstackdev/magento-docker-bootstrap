@@ -50,6 +50,30 @@ detect_os() {
 }
 HOST_OS="$(detect_os)"
 
+# ---------- host identity ----------------------------------------------
+# www-data (php-fpm), nginx (web) and node (nodejs) are remapped at image
+# build time to the UID/GID of the user running `make configure`, so files
+# under httpdocs/ carry the same owner inside and outside the containers
+# (no more "written by 1000, owned by 1001" mess). HOST_UID / HOST_GID env
+# vars win when set (CI, FILE= configs). Fallbacks to 1000:1000:
+#   - running as root (uid 0): never map the container user onto root
+#   - Windows hosts (Git Bash ids are huge and NTFS mounts ignore uid)
+# macOS is mapped like Linux; the usual 501:20 works because the images
+# use non-unique ids (groupmod/usermod -o), so gid 20 colliding with
+# Debian's dialout group is harmless.
+detect_host_ids() {
+    local uid gid
+    uid="${HOST_UID:-$(id -u)}"
+    gid="${HOST_GID:-$(id -g)}"
+    if [[ "$HOST_OS" == "windows" || "$uid" -eq 0 ]]; then
+        uid=1000; gid=1000
+    elif [[ "$gid" -eq 0 ]]; then
+        gid="$uid"
+    fi
+    HOST_UID="$uid"; HOST_GID="$gid"
+}
+detect_host_ids
+
 # ---------- subnet detection (Linux only) -------------------------------
 # We always use 10.10.X.0/24 — only the third octet (X) varies. Container
 # IPs are derived as <X>.2 = db, .3 = redis, .4 = web, .5 = php-fpm, etc.
@@ -699,6 +723,7 @@ ${C_BOLD}─── Summary ─────────────────�
   Varnish           : ${C_GREEN}${USE_VARNISH}$([[ "$USE_VARNISH" == "yes" ]] && echo " (varnish:${VARNISH_VERSION})")${C_RESET}
   Node.js           : ${C_GREEN}${USE_NODE}${C_RESET}
   Static IPs        : ${C_GREEN}$([[ "$HOST_OS" == "linux" ]] && echo "yes (10.10.${SUBNET_BASE}.0/24)" || echo no)${C_RESET}
+  Container user    : ${C_GREEN}www-data as ${HOST_UID}:${HOST_GID} (your host ids)${C_RESET}
 ${C_BOLD}──────────────────────────────────────────────────────${C_RESET}
 
 EOF
@@ -754,6 +779,13 @@ USE_VARNISH=${USE_VARNISH}
 USE_NODE=${USE_NODE}
 
 HOST_OS=${HOST_OS}
+
+# Host user identity captured at configure time. www-data (php-fpm), nginx
+# (web) and node (nodejs) are remapped to these ids when the images build,
+# so httpdocs/ has the same owner inside and outside the containers. To
+# change: edit, then \`make rebuild-config\` and \`docker compose build\`.
+HOST_UID=${HOST_UID}
+HOST_GID=${HOST_GID}
 
 # Third octet of the /24 subnet (Linux only — macOS uses service-name DNS).
 # Container IPs are derived: db=.2 redis=.3 web=.4 php-fpm=.5 opensearch=.6

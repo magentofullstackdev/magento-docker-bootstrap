@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-10-12
+
+Permissions fix: the container users now carry the host user's UID/GID, so
+`httpdocs/` is editable from both sides on any Linux uid and on macOS.
+
+### Fixed
+
+- **Container users now match the host user.** `make configure` records
+  `HOST_UID` / `HOST_GID` in `.env` (from `id -u` / `id -g`; fallback
+  `1000:1000` for root or native Windows) and compose passes them as
+  `USER_UID` / `USER_GID` build args. `www-data` (php-fpm), the `nginx`
+  worker user (web) and `node` (nodejs) are remapped with `groupmod -o` /
+  `usermod -o`, so macOS ids like `501:20` work even when the gid already
+  exists in the image. Files under `httpdocs/` carry the same owner inside
+  and outside the containers; a host with uid 1001 no longer ends up with
+  code it cannot edit. The php-fpm entrypoint no longer chowns the
+  `httpdocs/` and `db_dumps/` bind mounts (it used to rewrite their owner
+  on the host to 1000); only the `.composer` named volume is chowned. The
+  Node image finally applies its `USER_UID` / `USER_GID` args (they were
+  declared but ignored, and compose hardcoded 1000) and the bind-mounted
+  `nodejs/passwd` override is gone; `node`'s home is `/home/node` again
+  instead of `httpdocs/`. Older `.env` files without the keys keep
+  `1000:1000`. The php-fpm Dockerfile's `usermod ... || true` chain, which
+  hid remap failures, is replaced by a strict `set -eux` block that prints
+  `id www-data` at build time. `make test` asserts the rendered build args
+  equal the `.env` ids.
+
+### Changed
+
+- **Rebuilding on an existing project**: after pulling, re-run
+  `make configure` (or add `HOST_UID` / `HOST_GID` to `.env`), then
+  `make rebuild-config`, `docker compose build php-fpm web nodejs`,
+  `make stop && make up`. Files the old container wrote as uid 1000 on a
+  non-1000 host need a one-time `sudo chown -R $(id -u):$(id -g) httpdocs`.
+
 ## [1.3.0] - 2026-10-05
 
 Tracks the Adobe and MageOS releases between June and October 2026: the

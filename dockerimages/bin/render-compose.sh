@@ -28,7 +28,11 @@ REDIS_VERSION="${REDIS_VERSION:-7.4}"
 VALKEY_VERSION="${VALKEY_VERSION:-8.1}"
 VARNISH_VERSION="${VARNISH_VERSION:-7.7}"
 N98_VERSION="${N98_VERSION:-auto}"
-export CACHE_ENGINE REDIS_VERSION VALKEY_VERSION VARNISH_VERSION N98_VERSION
+# Host UID/GID the container users are remapped to (see init.sh). Older
+# .env files predate these keys: default to 1000:1000, the historic value.
+HOST_UID="${HOST_UID:-1000}"
+HOST_GID="${HOST_GID:-1000}"
+export CACHE_ENGINE REDIS_VERSION VALKEY_VERSION VARNISH_VERSION N98_VERSION HOST_UID HOST_GID
 
 # Container IP plan (linux only). On mac we use service-name DNS.
 # All IPs are 10.10.<DOCKER_SUBNET_BASE>.<last-octet>; only the last octet
@@ -110,7 +114,7 @@ cat <<EOF
 #
 # Project   : ${PROJECT_NAME}
 # Platform  : ${FLAVOUR} ${MAGENTO_VERSION}
-# PHP       : ${PHP_VERSION}
+# PHP       : ${PHP_VERSION}        Container user ids: ${HOST_UID}:${HOST_GID}
 # Database  : ${DB_ENGINE}:${DB_VERSION}
 # Varnish   : ${USE_VARNISH}    Node.js: ${USE_NODE}
 # Host OS   : ${HOST_OS}        Static IPs: $([[ "$HOST_OS" == linux ]] && echo "yes (${DOCKER_SUBNET})" || echo no)
@@ -193,6 +197,8 @@ cat <<EOF
     build:
       context: ./dockerimages/config/nginx
       args:
+        USER_UID: "${HOST_UID}"
+        USER_GID: "${HOST_GID}"
         SITE_HOST: "${SITE_HOST}"
         SITE_NAME: "${SITE_NAME}"
     volumes:
@@ -219,6 +225,8 @@ cat <<EOF
       args:
         PHP_VERSION: "${PHP_VERSION}"
         N98_VERSION: "${N98_VERSION}"
+        USER_UID: "${HOST_UID}"
+        USER_GID: "${HOST_GID}"
     volumes:
       - ./httpdocs:/var/www/html
       - ./dockerimages/config/php-fpm/config/php-fpm.conf:/usr/local/etc/php-fpm.conf
@@ -314,15 +322,14 @@ cat <<EOF
     build:
       context: ./dockerimages/config/nodejs
       args:
-        USER_UID: 1000
-        USER_GID: 1000
+        USER_UID: "${HOST_UID}"
+        USER_GID: "${HOST_GID}"
         SITE_HOST: "${SITE_HOST}"
         SITE_NAME: "${SITE_NAME}"
     stdin_open: true
     tty: true
     volumes:
       - ./httpdocs:/var/www/html
-      - ./dockerimages/config/nodejs/passwd:/etc/passwd
     ports:
       - "5173:5173"
 EOF

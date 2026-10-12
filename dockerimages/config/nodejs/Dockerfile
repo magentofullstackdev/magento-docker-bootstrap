@@ -15,6 +15,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends git bash \
 
 RUN ln -sf /bin/bash /bin/sh
 
+# Remap the node user to the host UID/GID so files written by frontend
+# tooling into httpdocs/ belong to the host user. `-o` tolerates ids that
+# already exist in the image (macOS gid 20).
+RUN set -eux; \
+    groupmod -o -g "${USER_GID}" node; \
+    usermod -o -u "${USER_UID}" -g "${USER_GID}" node; \
+    chown -R node:node /home/node; \
+    id node
+
 WORKDIR /var/www/html
 USER node:node
 

@@ -8,9 +8,6 @@ ARG PHP_VERSION=8.4
 FROM php:${PHP_VERSION}-fpm-bookworm
 # Re-declared so ${PHP_VERSION} is readable inside RUN steps.
 ARG PHP_VERSION
-# n98-magerun2 release to bake in. "auto" = latest phar, except on PHP 8.1
-# where n98 10.x no longer runs (requires PHP 8.2+) and 9.5.1 is used.
-ARG N98_VERSION=auto
 
 LABEL org.opencontainers.image.authors="Sergiu Ro. <sergiu.ro@magentofullstack.dev>"
 LABEL org.opencontainers.image.source="https://magentofullstack.dev"
@@ -101,6 +98,10 @@ RUN pecl channel-update pecl.php.net \
 # line (2.2.26+ on 2.4.6) and MageOS 3.x certifies 2.10.2.
 COPY --from=composer:2.10 /usr/bin/composer /usr/local/bin/composer
 
+# n98-magerun2 release to bake in. "auto" = latest phar, except on PHP 8.1
+# where n98 10.x no longer runs (requires PHP 8.2+) and 9.5.1 is used.
+# Declared here (not at the top) so changing it only rebuilds from here on.
+ARG N98_VERSION=auto
 # n98-magerun2: 10.x (Aug 2026) requires PHP 8.2+, so PHP 8.1 builds get
 # the last 9.x release. Any explicit N98_VERSION wins over the auto rule.
 RUN set -eux; \
@@ -134,12 +135,25 @@ COPY bin/* /usr/local/bin/
 COPY users/.bash_history /var/www/.bash_history
 COPY users/env.sample.php /var/www/env.sample.php
 
-RUN chmod +x /usr/local/bin/install.sh /usr/local/bin/user-sudoers \
-    && /usr/local/bin/user-sudoers \
-    && usermod -a -G root www-data \
-    && usermod -u 1000 www-data 2>/dev/null || true \
-    && chown -Rf www-data:www-data /var/www \
-    && chsh -s /bin/bash www-data
+# Host UID/GID that www-data is remapped to (compose passes HOST_UID /
+# HOST_GID from .env). Files under /var/www/html then carry the same owner
+# inside and outside the container on Linux and macOS alike. Declared here
+# so a different host id only rebuilds this final layer.
+ARG USER_UID=1000
+ARG USER_GID=1000
+# Remap www-data to the host ids. `-o` allows a non-unique id so a host gid
+# that already exists in the image (macOS gid 20 = Debian dialout) does not
+# fail the build. Only image-internal paths are chowned here; bind mounts
+# are never touched, they already belong to the host user by construction.
+RUN set -eux; \
+    chmod +x /usr/local/bin/install.sh /usr/local/bin/user-sudoers; \
+    /usr/local/bin/user-sudoers; \
+    groupmod -o -g "${USER_GID}" www-data; \
+    usermod -o -u "${USER_UID}" -g "${USER_GID}" www-data; \
+    usermod -a -G root www-data; \
+    chsh -s /bin/bash www-data; \
+    chown -Rf www-data:www-data /var/www; \
+    id www-data
 
 USER root
 

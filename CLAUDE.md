@@ -61,6 +61,14 @@ make stop && make up      # picks up the new compose
 
 Never edit `compose.yaml` directly — it gets overwritten.
 
+### "Permission denied in httpdocs" / files owned by the wrong user
+
+`www-data` in php-fpm, the `nginx` worker and `node` are remapped at image build time to `HOST_UID` / `HOST_GID` from `.env` (captured by `make configure` from the user running it; fallback `1000:1000` for root or native Windows). Diagnose:
+
+1. `grep HOST_ .env` vs `id -u; id -g` on the host. Missing keys mean an old `.env`: re-run `make configure` or add them, then `make rebuild-config` and `docker compose build php-fpm web nodejs`.
+2. `docker compose exec -T php-fpm id www-data` must print the host ids. If not, the image predates the `.env` change: rebuild it.
+3. Files already owned by the wrong uid on the host: one-time `sudo chown -R $(id -u):$(id -g) httpdocs` on the host. Never chown from inside the container and never recommend `chmod -R 777`.
+
 ### "Xdebug doesn't connect"
 
 This stack ships Xdebug 3 in trigger mode on port 9001. The container resolves the IDE host automatically (`xdebug.discover_client_host=true`). Common fixes:
@@ -88,6 +96,7 @@ Edit `.env`:
 - For MageOS, valid `MAGENTO_VERSION` values are the MageOS release numbers (see `MAGEOS_VERSIONS`): `3.5.0` down to `3.0.0` (all rebuilt on Magento 2.4.9, one shared spec; 3.5.0 is the only upstream-supported one), `2.3.0` (final 2.x, tracks 2.4.8-p5), `2.2.x` (2.4.8-p4), `2.1.0` / `2.0.0` (2.4.8-p3).
 - `PHP_VERSION=8.5` (must be allowed for that Magento release; 2.4.9 certifies 8.5 only, 8.4 is upgrade-only)
 - `OPENSEARCH_VERSION=3.9.0` (must be allowed for that Magento release; Adobe recommends the latest 3.x minor)
+- `HOST_UID` / `HOST_GID` (host user ids the container users are remapped to; change needs `docker compose build php-fpm web nodejs`)
 - `N98_VERSION=auto` (n98-magerun2 release baked into php-fpm; `auto` pins 9.5.1 on PHP 8.1 because n98 10.x needs PHP 8.2+, latest elsewhere)
 - `CACHE_ENGINE=valkey` (Adobe default since 2.4.6-p11). Use `redis` only for legacy patches; 2.4.9 forces Valkey (Adobe dropped Redis). The Docker service name stays `redis` in both cases so existing `app/etc/env.php` keeps working.
 - `DB_ENGINE=mariadb` — MySQL was dropped from Adobe's certified matrix on 2.4.6 / 2.4.7 after the MySQL 8.0 EOS (30 Apr 2026); 2.4.8 and 2.4.9 keep MySQL 8.4 only. The wizard auto-skips the question on releases where MySQL is unavailable. 2.4.9 on-prem lists MariaDB 12.3 (11.8 kept from the Cloud table).
