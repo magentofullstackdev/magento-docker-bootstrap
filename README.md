@@ -26,7 +26,7 @@ The compatibility matrix in `dockerimages/bin/init.sh` enforces the right combin
 
 ## What you get
 
-- **PHP-FPM** with Composer 2, n98-magerun2, Xdebug 3 (zero-config), MailHog handler, ImageMagick, full Magento aliases (`magento`, `n98`, `flushfront`, `dbimport`, …) and a seeded `.bash_history` so the shell remembers what you usually do.
+- **PHP-FPM** with Composer 2, n98-magerun2, Xdebug 3 (zero-config), MailHog handler (`sendmail-mailhog`, a sendmail-compatible shim over mhsendmail that works with both PHP `mail()` on Magento <= 2.4.7 and Symfony Mailer on 2.4.8+ / MageOS), ImageMagick, full Magento aliases (`magento`, `n98`, `flushfront`, `dbimport`, …) and a seeded `.bash_history` so the shell remembers what you usually do.
 - **Nginx** with self-signed SSL for your local domain, automatic switching between “direct” and “Varnish-fronted” vhosts.
 - **MariaDB or MySQL** — your choice, with version compatibility matched to the Magento release you picked.
 - **OpenSearch** — image automatically matched to the Magento version.

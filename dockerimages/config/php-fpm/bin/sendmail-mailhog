@@ -1,0 +1,25 @@
+#!/bin/sh
+# sendmail-compatible shim in front of mhsendmail.
+#
+# Symfony Mailer (Magento >= 2.4.8, MageOS 2.x / 3.x) only accepts a
+# sendmail_path that contains "-t" or "-bs" and then calls it as:
+#   <cmd> -i -f<sender> <recipient>...
+# PHP's own mail() (Magento <= 2.4.7 via Laminas Mail) calls it as:
+#   <cmd> -t -i          (recipients taken from the headers)
+# mhsendmail v0.2.0 knows only -f/--from and --smtp-addr and aborts on any
+# other flag, so this wrapper drops the classic sendmail switches (-t, -i,
+# -oi, -o*, -bs) and forwards everything else: sender, recipients, message
+# on stdin. Recipients come from the arguments when given, otherwise
+# mhsendmail reads them from the headers as before.
+# MAILHOG_ADDR overrides the host:port without touching this script.
+set -eu
+
+for arg in "$@"; do
+    shift
+    case "$arg" in
+        -t|-i|-oi|-o?*|-bs) ;;
+        *) set -- "$@" "$arg" ;;
+    esac
+done
+
+exec /usr/local/bin/mhsendmail --smtp-addr="${MAILHOG_ADDR:-mailhog:1025}" "$@"

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-10-14
+
+Mail fix: Magento 2.4.8+ (Symfony Mailer) could not send any email through
+MailHog from the php-fpm container.
+
+### Fixed
+
+- **Outgoing mail broken on Magento >= 2.4.8 and every MageOS release.**
+  Magento 2.4.8 replaced Laminas Mail with Symfony Mailer, whose
+  `SendmailTransport` refuses a `sendmail_path` that lacks `-t` / `-bs`
+  and then invokes it as `<cmd> -i -f<sender> <recipients>`. The image
+  pointed `sendmail_path` straight at `mhsendmail --smtp-addr=...`, and
+  mhsendmail v0.2.0 aborts on any flag it does not know, so every
+  `createCustomer`, password reset and `OrderSender` call died with
+  `InvalidArgumentException: Unsupported sendmail command flags` in
+  `var/log/exception.log`. New `bin/sendmail-mailhog` shim (baked into the
+  php-fpm image) strips the classic sendmail switches (`-t`, `-i`, `-oi`,
+  `-o*`, `-bs`) and forwards sender, recipients and the message on stdin to
+  mhsendmail; `php-fpm.ini` now sets
+  `sendmail_path = "/usr/local/bin/sendmail-mailhog -t -i"`. PHP `mail()`
+  on Magento <= 2.4.7 keeps working through the same shim (recipients from
+  the headers). `MAILHOG_ADDR` env var overrides the SMTP target. No change
+  to `env.php` or Magento config is needed. Existing projects:
+  `docker compose build php-fpm && docker compose up -d php-fpm` (not
+  `make rebuild`, which drops the DB).
+
 ## [1.3.1] - 2026-10-12
 
 Permissions fix: the container users now carry the host user's UID/GID, so

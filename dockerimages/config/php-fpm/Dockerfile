@@ -1,7 +1,8 @@
 # =====================================================================
 # PHP-FPM image for Magento / MageOS development.
 # Version chosen at build time via PHP_VERSION ARG (default 8.4).
-# Includes: composer 2, n98-magerun2, xdebug 3, mhsendmail, ImageMagick,
+# Includes: composer 2, n98-magerun2, xdebug 3, mhsendmail (behind the
+# sendmail-mailhog shim for Symfony Mailer), ImageMagick,
 # bash-completion for n98 + m2install, sudoers for www-data.
 # =====================================================================
 ARG PHP_VERSION=8.4
@@ -146,7 +147,7 @@ ARG USER_GID=1000
 # fail the build. Only image-internal paths are chowned here; bind mounts
 # are never touched, they already belong to the host user by construction.
 RUN set -eux; \
-    chmod +x /usr/local/bin/install.sh /usr/local/bin/user-sudoers; \
+    chmod +x /usr/local/bin/install.sh /usr/local/bin/user-sudoers /usr/local/bin/sendmail-mailhog; \
     /usr/local/bin/user-sudoers; \
     groupmod -o -g "${USER_GID}" www-data; \
     usermod -o -u "${USER_UID}" -g "${USER_GID}" www-data; \
